@@ -1,0 +1,314 @@
+"""
+Unified ProteinTransformer backbone with swappable task heads.
+
+Two task head classes are provided:
+
+* ``PerResidueHead``      — per-position classification (e.g. SS3 prediction).
+* ``GlobalRegressionHead`` — sequence-level regression via mean pooling
+                             (e.g. fluorescence / stability prediction).
+
+Typical usage::
+
+    from tape_biotransformer.config import ModelConfig, AttentionConfig
+    from tape_biotransformer.models.protein_transformer import (
+        ProteinTransformer, PerResidueHead, GlobalRegressionHead
+    )
+
+    model_cfg  = ModelConfig()
+    attn_cfg   = AttentionConfig(type="sliding3d", block_size=40, stride=15)
+
+    # Secondary structure
+    head = PerResidueHead(d_model=model_cfg.d_model, num_classes=3)
+    model = ProteinTransformer(model_cfg, attn_cfg, head)
+
+    # Fluorescence / stability
+    head = GlobalRegressionHead(d_model=model_cfg.d_model, d_ff=128)
+    model = ProteinTransformer(model_cfg, attn_cfg, head)
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import Optional, Tuple, Union
+
+from ..config import AttentionConfig, ModelConfig
+from .encoder import Encoder, _SLIDING_ATTENTION_TYPES
+
+
+# ---------------------------------------------------------------------------
+# Task heads
+# ---------------------------------------------------------------------------
+
+class PerResidueHead(nn.Module):
+    """Linear classifier applied independently to each sequence position.
+
+    Used for per-residue prediction tasks such as secondary structure (SS3).
+
+    Args:
+        d_model: Encoder output dimension.
+        num_classes: Number of output classes (e.g. 3 for H/E/C).
+    """
+
+    def __init__(self, d_model: int, num_classes: int) -> None:
+        super().__init__()
+        self.classifier = nn.Linear(d_model, num_classes)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: ``(B, L, d_model)``
+
+        Returns:
+            ``(B, L, num_classes)``
+        """
+        return self.classifier(x)
+
+
+class GlobalRegressionHead(nn.Module):
+    """Mean-pool over sequence positions, then regress to a scalar.
+
+    Used for global/sequence-level regression tasks such as fluorescence and
+    stability prediction.
+
+    The mean-pool is computed over **all positions** (including padding).
+    For fair evaluation make sure to pass properly padded sequences.
+
+    Architecture::
+
+        mean_pool(x)  →  Linear(d_model, d_ff)  →  ReLU  →  Dropout
+                       →  Linear(d_ff, 1)
+
+    Args:
+        d_model: Encoder output dimension.
+        d_ff: Hidden dimension of the regression MLP.
+        dropout: Dropout probability applied inside the MLP.
+    """
+
+    def __init__(self, d_model: int, d_ff: int = 128, dropout: float = 0.2) -> None:
+        super().__init__()
+        self.regressor = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_ff, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: ``(B, L, d_model)``
+
+        Returns:
+            ``(B, 1)``
+        """
+        pooled = x.mean(dim=1)          # (B, d_model)
+        return self.regressor(pooled)   # (B, 1)
+
+
+# ---------------------------------------------------------------------------
+# Unified backbone
+# ---------------------------------------------------------------------------
+
+class ProteinTransformer(nn.Module):
+    """Shared transformer backbone with a pluggable task head.
+
+    The backbone consists of:
+      - Token embedding:     (B, L) → (B, L, d_model)
+      - Positional embedding (learnable): (B, L, d_model)
+      - Embedding layer norm
+      - ``num_layers`` encoder layers (attention + FFN + residual norms)
+
+    The output of the encoder stack is passed to the task ``head`` module.
+
+    Mask generation
+    ---------------
+    Padding masks are generated internally from ``input_ids`` (padding token
+    index = 0).  The mask shape is adjusted based on the attention type:
+
+    - ``plain2d``    → ``(B, 1, 1, L)``
+    - ``linformer2d`` → ``(B, 1, L, 1)``
+    - ``multiped2d`` / ``sliding3d`` → ``(B, Blk, L_b)``
+
+    Sequence alignment for sliding-window types
+    --------------------------------------------
+    When a sliding-window attention is used, ``input_ids`` are zero-padded to
+    the nearest length satisfying ``(L - block_size) % stride == 0`` before
+    any embedding lookup.  For the SS3 task the corresponding ``labels``
+    tensor is also padded with ``-100`` (the ``ignore_index`` in
+    ``CrossEntropyLoss``).
+
+    Args:
+        model_cfg: Architecture hyperparameters.
+        attn_cfg: Attention type and its parameters.
+        head: Task head module (``PerResidueHead`` or ``GlobalRegressionHead``).
+        pretrained_2d_ckpt: Optional checkpoint forwarded to encoder layers for
+            2D weight loading (``sliding3d`` only).
+        load_ffn_pretrained: Load FFN weights from checkpoint as well.
+        freeze_ffn: Freeze FFN weights after loading.
+    """
+
+    def __init__(
+        self,
+        model_cfg: ModelConfig,
+        attn_cfg: AttentionConfig,
+        head: nn.Module,
+        pretrained_2d_ckpt: Optional[str] = None,
+        load_ffn_pretrained: bool = False,
+        freeze_ffn: bool = False,
+    ) -> None:
+        super().__init__()
+        self.model_cfg = model_cfg
+        self.attn_cfg = attn_cfg
+        self.head = head
+
+        # --- resolve effective sequence length ---
+        len_seq = model_cfg.max_seq_length
+        is_sliding = attn_cfg.type.lower() in _SLIDING_ATTENTION_TYPES
+        if is_sliding:
+            remainder = (len_seq - attn_cfg.block_size) % attn_cfg.stride
+            pad_len = (attn_cfg.stride - remainder) % attn_cfg.stride
+            len_seq = len_seq + pad_len
+
+        self._effective_len_seq = len_seq
+        self._is_sliding = is_sliding
+
+        # --- build common attn_kwargs dict ---
+        attn_kwargs = dict(
+            len_seq=len_seq,
+            block_size=attn_cfg.block_size,
+            stride=attn_cfg.stride,
+            linformer_k=attn_cfg.linformer_k,
+            window_size=attn_cfg.window_size,
+            rank=attn_cfg.rank_3d,
+            load_from_pretrained_2d=(pretrained_2d_ckpt is not None),
+            pretrained_2d_ckpt=pretrained_2d_ckpt,
+            freeze_2d=attn_cfg.freeze_2d,
+        )
+
+        # --- encoder stack ---
+        self.encoder_layers = nn.ModuleList([
+            Encoder(
+                attn_type=attn_cfg.type,
+                d_model=model_cfg.d_model,
+                num_heads=model_cfg.num_heads,
+                d_ff=model_cfg.dim_feedforward,
+                dropout=model_cfg.dropout,
+                pretrained_2d_ckpt=pretrained_2d_ckpt,
+                load_ffn_pretrained=load_ffn_pretrained,
+                freeze_ffn=freeze_ffn,
+                **attn_kwargs,
+            )
+            for _ in range(model_cfg.num_layers)
+        ])
+
+        # --- embeddings ---
+        self.token_embedding = nn.Embedding(
+            model_cfg.vocab_size, model_cfg.d_model, padding_idx=0
+        )
+        self.position_embedding = nn.Embedding(len_seq, model_cfg.d_model)
+        self.embedding_norm = nn.LayerNorm(model_cfg.d_model)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _pad_to_blocks(
+        self,
+        input_ids: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Zero-pad ``input_ids`` (and ``labels``) so sliding blocks fit evenly."""
+        B, L = input_ids.shape
+        remainder = (L - self.attn_cfg.block_size) % self.attn_cfg.stride
+        pad_len = (self.attn_cfg.stride - remainder) % self.attn_cfg.stride
+        if pad_len > 0:
+            input_ids = F.pad(input_ids, (0, pad_len), value=0)
+            if labels is not None:
+                labels = F.pad(labels, (0, pad_len), value=-100)
+        return input_ids, labels
+
+    def _generate_mask(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Create a padding mask suitable for the configured attention type.
+
+        Args:
+            input_ids: ``(B, L)`` — already padded if sliding.
+
+        Returns:
+            Mask tensor.  Shape and dtype depend on attention type.
+        """
+        attn_type = self.attn_cfg.type.lower()
+        mask = (input_ids != 0)  # (B, L), bool
+
+        if attn_type == "plain2d":
+            return mask.unsqueeze(1).unsqueeze(1)                  # (B, 1, 1, L)
+
+        if attn_type == "linformer2d":
+            return mask.unsqueeze(1).unsqueeze(3)                  # (B, 1, L, 1)
+
+        if attn_type in ("multiped2d", "sliding3d"):
+            # Produce block-shaped mask: (B, Blk, L_b)
+            block_size = self.attn_cfg.block_size
+            stride = self.attn_cfg.stride
+            B, L = input_ids.shape
+            num_blocks = (L - block_size) // stride + 1
+            shape = (B, num_blocks, block_size)
+            strides_ = (
+                mask.stride(0),
+                stride * mask.stride(1),
+                mask.stride(1),
+            )
+            return mask.as_strided(shape, strides_).contiguous()  # (B, Blk, L_b)
+
+        # Fallback: standard 2D mask
+        return mask.unsqueeze(1).unsqueeze(1)
+
+    # ------------------------------------------------------------------
+    # Forward pass
+    # ------------------------------------------------------------------
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """Run the full forward pass.
+
+        Args:
+            input_ids: ``(B, L)`` token index tensor.
+            labels: Optional target tensor.  For SS3 this is ``(B, L)``; for
+                regression tasks it is ``(B,)`` or ``(B, 1)``.  When provided,
+                the method returns ``(logits, labels)`` so that padded labels
+                are updated to match any sequence-length padding applied
+                internally.
+
+        Returns:
+            * If ``labels`` is ``None``: output tensor from the head.
+            * If ``labels`` is provided: ``(head_output, updated_labels)``
+              tuple so the training loop can use the up-to-date labels.
+        """
+        # Pad sequences for sliding-window attention
+        if self._is_sliding:
+            input_ids, labels = self._pad_to_blocks(input_ids, labels)
+
+        B, L = input_ids.shape
+
+        # Padding mask
+        masks = self._generate_mask(input_ids)
+
+        # Positional ids
+        pos_ids = torch.arange(L, device=input_ids.device).unsqueeze(0).expand(B, -1)
+
+        # Embed tokens + positions
+        x = self.token_embedding(input_ids) + self.position_embedding(pos_ids)
+        x = self.embedding_norm(x)
+
+        # Encoder layers
+        for layer in self.encoder_layers:
+            x = layer(x, mask=masks)
+
+        # Task head
+        out = self.head(x)
+
+        if labels is not None:
+            return out, labels
+        return out
