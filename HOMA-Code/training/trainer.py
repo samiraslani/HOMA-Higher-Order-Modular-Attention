@@ -1,0 +1,283 @@
+"""
+Unified training loop for all published tasks.
+
+``Trainer`` supports both per-residue classification (SS3) and global
+regression (fluorescence, stability) by accepting task-specific loss and
+metric functions.
+
+Checkpointing
+-------------
+After every epoch the trainer saves a checkpoint to
+``{checkpoint_dir}/{attn_name}.pt``.  If a checkpoint already exists,
+training resumes from the last saved epoch automatically.
+"""
+
+import contextlib
+import io
+import logging
+import os
+from typing import Callable, Dict, List, Optional, Tuple
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from tqdm import tqdm
+
+from ..config import TrainingConfig
+from ..utils.checkpointing import load_checkpoint, save_checkpoint
+from .efficiency import EfficiencyTracker
+
+logger = logging.getLogger(__name__)
+
+
+class Trainer:
+    """Train and validate a ``ProteinTransformer`` for one or more tasks.
+
+    Args:
+        config: Training hyperparameters.
+        attn_name: Short name used for checkpoint file naming (e.g. the
+            attention type string such as ``"sliding3d"``).
+    """
+
+    def __init__(self, config: TrainingConfig, attn_name: str = "model") -> None:
+        self.config = config
+        self.attn_name = attn_name
+        self.device = torch.device(
+            config.device
+            if config.device
+            else ("cuda" if torch.cuda.is_available() else "cpu")
+        )
+        self._checkpoint_path = os.path.join(
+            config.checkpoint_dir, f"{attn_name}.pt"
+        )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def fit(
+        self,
+        model: nn.Module,
+        train_loader,
+        val_loader,
+        criterion: nn.Module,
+        metric_fn: Callable,
+        is_classification: bool = True,
+        track_efficiency: bool = False,
+    ) -> Tuple[nn.Module, Dict[str, List]]:
+        """Run the full training loop.
+
+        Args:
+            model: The model to train (will be moved to ``self.device``).
+            train_loader: Training ``DataLoader``.
+            val_loader: Validation ``DataLoader``.
+            criterion: Loss function.  For SS3 this is
+                ``nn.CrossEntropyLoss(ignore_index=-100)``; for regression
+                ``nn.MSELoss()``.
+            metric_fn: Callable ``(logits, labels) → float`` returning the
+                primary scalar metric (accuracy or Spearman ρ).
+            is_classification: If ``True``, treats the task as per-residue
+                classification (model returns ``(logits, labels)``); if
+                ``False``, treats it as global regression (model returns
+                scalar predictions, batch has ``"targets"`` key).
+            track_efficiency: If ``True``, collect per-step timing and memory
+                metrics using :class:`EfficiencyTracker`.
+
+        Returns:
+            Tuple ``(trained_model, history)`` where ``history`` is a dict of
+            lists keyed by metric name (train_loss, val_loss, val_metric, and
+            optionally efficiency keys).
+        """
+        model = model.to(self.device)
+        optimizer = optim.Adam(model.parameters(), lr=self.config.learning_rate)
+        start_epoch = 0
+        history: Dict[str, List] = {
+            "train_loss": [],
+            "val_loss": [],
+            "val_metric": [],
+        }
+        if track_efficiency:
+            for k in (
+                "avg_step_ms_e2e", "tokens_per_sec_e2e",
+                "avg_step_ms_compute", "tokens_per_sec_compute",
+                "avg_data_ms", "avg_compute_ms",
+                "epoch_wall_s", "peak_mem_alloc_gb", "peak_mem_reserved_gb",
+            ):
+                history[k] = []
+
+        # Resume from checkpoint if one exists
+        if os.path.exists(self._checkpoint_path):
+            logger.info(
+                "Found checkpoint for %s — resuming training.", self.attn_name
+            )
+            ckpt = load_checkpoint(
+                self._checkpoint_path, model, optimizer, device=str(self.device)
+            )
+            start_epoch = ckpt.get("epoch", -1) + 1
+            history = ckpt.get("history", history)
+
+        total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        logger.info("Total trainable parameters: %d", total_params)
+        print(f"\nTotal trainable parameters: {total_params:,}\n")
+
+        tracker = (
+            EfficiencyTracker(
+                device=str(self.device),
+                warmup_steps=self.config.warmup_steps,
+            )
+            if track_efficiency
+            else None
+        )
+
+        for epoch in range(start_epoch, self.config.epochs):
+            train_loss = self._train_epoch(
+                model, train_loader, optimizer, criterion,
+                is_classification, tracker
+            )
+            val_loss, val_metric = self._validate(
+                model, val_loader, criterion, metric_fn, is_classification
+            )
+
+            history["train_loss"].append(train_loss)
+            history["val_loss"].append(val_loss)
+            history["val_metric"].append(val_metric)
+
+            if tracker is not None:
+                eff = tracker.end_epoch()
+                for k, v in eff.items():
+                    history[k].append(v)
+                self._log_efficiency(epoch, train_loss, val_loss, val_metric, eff)
+            else:
+                print(
+                    f"Epoch {epoch + 1}/{self.config.epochs} | "
+                    f"Train loss {train_loss:.4f} | "
+                    f"Val loss {val_loss:.4f} | "
+                    f"Val metric {val_metric:.4f}"
+                )
+
+            save_checkpoint(
+                self._checkpoint_path,
+                model,
+                optimizer,
+                epoch,
+                extra={"history": history},
+            )
+
+        return model, history
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _train_epoch(
+        self,
+        model: nn.Module,
+        loader,
+        optimizer: optim.Optimizer,
+        criterion: nn.Module,
+        is_classification: bool,
+        tracker: Optional[EfficiencyTracker],
+    ) -> float:
+        model.train()
+        total_loss = 0.0
+
+        if tracker is not None:
+            tracker.start_epoch()
+
+        pbar = tqdm(loader, desc="Training", leave=False)
+        prev_t = None
+        for step, batch in enumerate(pbar):
+            if tracker is not None:
+                if prev_t is None:
+                    # first batch: no data-loading gap measurement
+                    import time
+                    prev_t = time.perf_counter()
+                tracker.record_batch_start()
+                tracker.record_compute_start()
+
+            if is_classification:
+                input_ids = batch["input_ids"].to(self.device)
+                labels = batch["labels"].to(self.device)
+                optimizer.zero_grad(set_to_none=True)
+                logits, labels = model(input_ids, labels)
+                loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+            else:
+                input_ids = batch["input_ids"].to(self.device)
+                targets = batch["targets"].to(self.device)
+                optimizer.zero_grad(set_to_none=True)
+                preds = model(input_ids)
+                loss = criterion(preds.squeeze(-1), targets)
+
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+            pbar.set_postfix(loss=f"{loss.item():.4f}")
+
+            if tracker is not None:
+                n_tokens = int(input_ids.numel())
+                tracker.record_compute_end(n_tokens)
+
+        return total_loss / max(len(loader), 1)
+
+    @torch.no_grad()
+    def _validate(
+        self,
+        model: nn.Module,
+        loader,
+        criterion: nn.Module,
+        metric_fn: Callable,
+        is_classification: bool,
+    ) -> Tuple[float, float]:
+        model.eval()
+        total_loss = 0.0
+        all_preds: List[torch.Tensor] = []
+        all_targets: List[torch.Tensor] = []
+
+        for batch in loader:
+            if is_classification:
+                input_ids = batch["input_ids"].to(self.device)
+                labels = batch["labels"].to(self.device)
+                logits, labels = model(input_ids, labels)
+                loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+                all_preds.append(logits.cpu())
+                all_targets.append(labels.cpu())
+            else:
+                input_ids = batch["input_ids"].to(self.device)
+                targets = batch["targets"].to(self.device)
+                preds = model(input_ids)
+                loss = criterion(preds.squeeze(-1), targets)
+                all_preds.append(preds.cpu())
+                all_targets.append(targets.cpu())
+
+            total_loss += loss.item()
+
+        avg_loss = total_loss / max(len(loader), 1)
+
+        preds_cat = torch.cat(all_preds)
+        targets_cat = torch.cat(all_targets)
+        metric = metric_fn(preds_cat, targets_cat)
+
+        return avg_loss, metric
+
+    @staticmethod
+    def _log_efficiency(
+        epoch: int,
+        train_loss: float,
+        val_loss: float,
+        val_metric: float,
+        eff: Dict[str, float],
+    ) -> None:
+        print(
+            f"Epoch {epoch + 1} | "
+            f"Train loss {train_loss:.4f} | Val loss {val_loss:.4f} | "
+            f"Val metric {val_metric:.4f}\n"
+            f"  End-to-end: {eff['avg_step_ms_e2e']:.2f} ms/step | "
+            f"{eff['tokens_per_sec_e2e']:,.0f} tok/s\n"
+            f"  Compute:    {eff['avg_step_ms_compute']:.2f} ms/step | "
+            f"{eff['tokens_per_sec_compute']:,.0f} tok/s\n"
+            f"  Memory:     alloc {eff['peak_mem_alloc_gb']:.2f} GB | "
+            f"reserved {eff['peak_mem_reserved_gb']:.2f} GB\n"
+            f"  Timing:     data {eff['avg_data_ms']:.2f} ms | "
+            f"compute {eff['avg_compute_ms']:.2f} ms | "
+            f"epoch {eff['epoch_wall_s']:.1f} s"
+        )
