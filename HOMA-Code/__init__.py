@@ -1,1 +1,1 @@
-"""TAPE BioTransformer — sliding-window 3D attention for protein sequences."""
+"""TAPE BioTransformer — HOMA (Higher-Order MultiHead Attention) for protein sequences."""
