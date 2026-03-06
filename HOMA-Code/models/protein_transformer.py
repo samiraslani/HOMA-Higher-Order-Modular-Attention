@@ -15,7 +15,7 @@ Typical usage::
     )
 
     model_cfg  = ModelConfig()
-    attn_cfg   = AttentionConfig(type="sliding3d", block_size=40, stride=15)
+    attn_cfg   = AttentionConfig(type="homa", block_size=40, stride=15)
 
     # Secondary structure
     head = PerResidueHead(d_model=model_cfg.d_model, num_classes=3)
@@ -127,7 +127,7 @@ class ProteinTransformer(nn.Module):
 
     - ``plain2d``    → ``(B, 1, 1, L)``
     - ``linformer2d`` → ``(B, 1, L, 1)``
-    - ``multiped2d`` / ``sliding3d`` → ``(B, Blk, L_b)``
+    - ``multiped2d`` / ``homa`` → ``(B, Blk, L_b)``
 
     Sequence alignment for sliding-window types
     --------------------------------------------
@@ -142,7 +142,7 @@ class ProteinTransformer(nn.Module):
         attn_cfg: Attention type and its parameters.
         head: Task head module (``PerResidueHead`` or ``GlobalRegressionHead``).
         pretrained_2d_ckpt: Optional checkpoint forwarded to encoder layers for
-            2D weight loading (``sliding3d`` only).
+            2D weight loading (``homa`` only).
         load_ffn_pretrained: Load FFN weights from checkpoint as well.
         freeze_ffn: Freeze FFN weights after loading.
     """
@@ -245,7 +245,7 @@ class ProteinTransformer(nn.Module):
         if attn_type == "linformer2d":
             return mask.unsqueeze(1).unsqueeze(3)                  # (B, 1, L, 1)
 
-        if attn_type in ("multiped2d", "sliding3d"):
+        if attn_type in ("multiped2d", "homa"):
             # Produce block-shaped mask: (B, Blk, L_b)
             block_size = self.attn_cfg.block_size
             stride = self.attn_cfg.stride
