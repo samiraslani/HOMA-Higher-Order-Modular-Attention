@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # Attention types that use sliding-window blocking and therefore need seq-len
 # to be aligned to (block_size, stride) before positional embeddings are
 # created.  The Encoder adjusts len_seq in kwargs accordingly.
-_SLIDING_ATTENTION_TYPES = {"multiped2d", "sliding3d"}
+_SLIDING_ATTENTION_TYPES = {"multiped2d", "homa"}
 
 
 class Encoder(nn.Module):
@@ -32,7 +32,7 @@ class Encoder(nn.Module):
         dropout: Dropout probability for both sub-layers.
         pretrained_2d_ckpt: Optional checkpoint path forwarded to the
             attention module for 2D weight pre-loading (only used by
-            ``sliding3d``).
+            ``homa``).
         load_ffn_pretrained: If ``True``, load FFN weights from
             ``pretrained_2d_ckpt`` as well.
         freeze_ffn: If ``True``, freeze FFN weights after loading.
