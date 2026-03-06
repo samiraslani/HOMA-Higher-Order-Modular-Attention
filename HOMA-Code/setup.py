@@ -4,7 +4,7 @@ setup(
     name="tape_biotransformer",
     version="0.1.0",
     description=(
-        "BioTransformer with sliding-window 3D attention for protein sequence modelling"
+        "BioTransformer with HOMA (Higher-Order MultiHead Attention) for protein sequence modelling"
     ),
     packages=find_packages(),
     python_requires=">=3.8",
