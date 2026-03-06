@@ -21,7 +21,7 @@ Two design choices keep the computation tractable:
 | Technique | Effect |
 |---|---|
 | **Sliding-window blocking** | Restricts attention to blocks of length `block_size`, reducing complexity from $O(L^2)$ / $O(L^3)$ to $O(L \cdot b^2)$ / $O(L \cdot w^2)$ |
-| **Low-rank L-matrix** | Factorises $L = x W_{l_u} W_{l_v}$ with rank 8, cutting 3D parameters by ~97% (262 k → 8 k for d=512) |
+| **Low-rank U-matrix** | Factorises $U = W_{l_u} W_{l_v}$ with rank 8, cutting 3D parameters by ~97% (262 k → 8 k for d=512) |
 
 Transfer learning is supported: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a strong 2D baseline and optionally frozen, so only the 3D components ($W_{l_u}, W_{l_v}$, fusion MLP) are trained from scratch.
 
