@@ -10,7 +10,7 @@ From the repository root::
 The script trains three model variants sequentially:
   1. Plain 2D attention (baseline)
   2. Sliding-window 2D attention (efficiency baseline)
-  3. Sliding-window 3D attention (main contribution)
+  3. HOMA attention (main contribution)
 
 TAPE LMDB datasets are expected at the paths set in the ``DATA_DIR``
 variable below.  Download instructions are in the TAPE repository:
@@ -91,12 +91,12 @@ if __name__ == "__main__":
     # 2. Sliding-window 2D (efficiency baseline)
     run(AttentionConfig(type="multiped2d", block_size=40, stride=15))
 
-    # 3. Sliding-window 3D with transfer from the multiped2d checkpoint
+    # 3. HOMA with transfer from the multiped2d checkpoint
     #    (comment out pretrained_ckpt to train from scratch)
     pretrained = os.path.join(CHECKPOINT_DIR, "multiped2d.pt")
     run(
         AttentionConfig(
-            type="sliding3d",
+            type="homa",
             block_size=40,
             stride=15,
             window_size=7,
