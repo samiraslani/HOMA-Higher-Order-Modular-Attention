@@ -301,4 +301,9 @@ If you use this code, please cite our paper:
 ---
 
 ## License
+Copyright (c) 2025 Shirin Amiraslani  
+All Rights Reserved.
 
+You may not copy, modify, distribute, or use this software for
+any commercial or research purposes without explicit written
+permission from the author.
