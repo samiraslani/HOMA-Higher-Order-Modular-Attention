@@ -69,7 +69,7 @@ tape_biotransformer/
 **Requirements:** Python ≥ 3.8, PyTorch ≥ 1.13
 
 ```bash
-git clone https://github.com/your-org/tape-biotransformer.git
+git clone https://github.com/samiraslani/tape-biotransformer.git
 cd tape-biotransformer
 pip install -e .
 ```
