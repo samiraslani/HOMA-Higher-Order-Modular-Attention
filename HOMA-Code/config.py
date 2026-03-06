@@ -48,8 +48,8 @@ class AttentionConfig:
         Sliding-window 2D attention (block_size, stride).
     ``"linformer2d"``
         Low-rank 2D attention (linformer_k, max_seq_length from ModelConfig).
-    ``"sliding3d"``  ← **main contribution**
-        Sliding-window 3D attention with low-rank L-matrix and optional
+    ``"homa"``  ← **main contribution**
+        HOMA (Higher-Order MultiHead Attention) with low-rank L-matrix and optional
         pretrained-2D transfer (block_size, stride, window_size, rank_3d,
         pretrained_ckpt, freeze_2d).
 
@@ -58,17 +58,17 @@ class AttentionConfig:
         block_size: Block length for sliding-window attention variants.
         stride: Step size between consecutive blocks.
         linformer_k: Low-rank projection dimension for Linformer2D.
-        window_size: Local context window for the 3D sliding-window attention.
-        rank_3d: Rank of the low-rank L-matrix decomposition in sliding3d.
+        window_size: Local context window for HOMA attention.
+        rank_3d: Rank of the low-rank L-matrix decomposition in homa.
         pretrained_ckpt: Path to a checkpoint whose W_q/W_k/W_v weights are
-            loaded into the 2D projections of sliding3d.
+            loaded into the 2D projections of homa.
         freeze_2d: If True, freeze the loaded 2D projection weights so only
             the 3D-specific parameters (W_l_u, W_l_v, fusion_layer) are
             trained.
     """
     type: str = "plain2d"
 
-    # Sliding-window (multiped2d / sliding3d)
+    # Sliding-window (multiped2d / homa)
     block_size: int = 40
     stride: int = 15
 
@@ -79,7 +79,7 @@ class AttentionConfig:
     window_size: int = 7
     rank_3d: int = 8
 
-    # Transfer-learning for sliding3d
+    # Transfer-learning for homa
     pretrained_ckpt: Optional[str] = None
     freeze_2d: bool = False
 
