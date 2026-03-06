@@ -1,7 +1,7 @@
 """
-Main contribution: Sliding-window 3D self-attention with low-rank L-matrix.
+Main contribution: HOMA — Higher-Order MultiHead Attention with low-rank L-matrix.
 
-``Attn2DMultiPed3Dslidingw`` is the primary novel mechanism introduced in
+``HOMA`` is the primary novel mechanism introduced in
 this work.  It extends standard 2D multi-head attention with a *third-order
 interaction term* while keeping computational cost tractable through two
 key design choices:
@@ -69,8 +69,8 @@ from .base import AttentionBase, softmax_nd
 logger = logging.getLogger(__name__)
 
 
-class Attn2DMultiPed3Dslidingw(AttentionBase):
-    """Sliding-window 3D attention with low-rank L-matrix and 2D transfer.
+class HOMA(AttentionBase):
+    """HOMA — Higher-Order MultiHead Attention with low-rank L-matrix and 2D transfer.
 
     See module docstring for the full mathematical description.
 
@@ -239,7 +239,7 @@ class Attn2DMultiPed3Dslidingw(AttentionBase):
     def forward(
         self, x: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Compute sliding-window 3D attention.
+        """Compute HOMA attention.
 
         Args:
             x: Input sequence ``(B, L, d_model)``.
