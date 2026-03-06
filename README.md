@@ -161,7 +161,7 @@ Four attention types are available via `get_attention(type, ...)` or `AttentionC
 | `"plain2d"` | `MultiHeadAttn2D` | Standard $O(L^2)$ scaled dot-product attention |
 | `"multiped2d"` | `Attn2D_MultiPed` | Sliding-window 2D attention — $O(L \cdot b^2)$ |
 | `"linformer2d"` | `Attn2DLinformer` | Low-rank 2D attention — $O(L \cdot k)$ |
-| `"sliding3d"` | `Attn2DMultiPed3Dslidingw` | **Main contribution** — sliding-window 3D with low-rank $L$ |
+| `"sliding3d"` | `Attn2DMultiPed3Dslidingw` | **Main contribution** — A unified Transformer architecture combining blockwise 3D sliding-window and blockwise pairwise attention.|
 
 ### Complexity comparison
 
