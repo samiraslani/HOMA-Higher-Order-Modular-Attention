@@ -8,12 +8,12 @@ import logging
 from typing import Any
 
 from .attention_2d import Attn2D_MultiPed, Attn2DLinformer, MultiHeadAttn2D
-from .attention_3d import Attn2DMultiPed3Dslidingw
+from .attention_3d import HOMA
 
 logger = logging.getLogger(__name__)
 
 # Supported attention type strings
-_ATTENTION_TYPES = ("plain2d", "multiped2d", "linformer2d", "sliding3d")
+_ATTENTION_TYPES = ("plain2d", "multiped2d", "linformer2d", "homa")
 
 
 def get_attention(attn_type: str, **kwargs: Any):
@@ -21,7 +21,7 @@ def get_attention(attn_type: str, **kwargs: Any):
 
     Args:
         attn_type: One of ``"plain2d"``, ``"multiped2d"``, ``"linformer2d"``,
-            or ``"sliding3d"``.
+            or ``"homa"``.
         **kwargs: Parameters forwarded to the attention constructor.  Common
             keys: ``num_heads``, ``d_model``, ``len_seq``, ``block_size``,
             ``stride``, ``linformer_k`` (mapped to ``k``), ``window_size``,
@@ -59,8 +59,8 @@ def get_attention(attn_type: str, **kwargs: Any):
             len_seq=kwargs["len_seq"],
         )
 
-    if attn_type == "sliding3d":
-        return Attn2DMultiPed3Dslidingw(
+    if attn_type == "homa":
+        return HOMA(
             num_heads=kwargs["num_heads"],
             d_model=kwargs["d_model"],
             stride=kwargs["stride"],
@@ -84,5 +84,5 @@ __all__ = [
     "MultiHeadAttn2D",
     "Attn2D_MultiPed",
     "Attn2DLinformer",
-    "Attn2DMultiPed3Dslidingw",
+    "HOMA",
 ]
