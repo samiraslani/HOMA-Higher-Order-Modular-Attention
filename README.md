@@ -1,6 +1,6 @@
-# TAPE BioTransformer
+# TAPE BioTransformer with HOMA
 
-A protein sequence transformer with **sliding-window 3D attention** that captures higher-order (three-way) interactions between sequence positions.  Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
+A protein sequence transformer with **HOMA (Higher-Order MultiHead Attention)** that captures higher-order (three-way) interactions between sequence positions.  Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
 
 ---
 
@@ -39,7 +39,7 @@ tape_biotransformer/
 │   ├── attention/
 │   │   ├── base.py                 # AttentionBase, shared sliding-block helpers
 │   │   ├── attention_2d.py         # MultiHeadAttn2D, Attn2D_MultiPed, Attn2DLinformer
-│   │   ├── attention_3d.py         # Attn2DMultiPed3Dslidingw  ← main contribution
+│   │   ├── attention_3d.py         # HOMA  ← main contribution
 │   │   └── __init__.py             # get_attention() factory
 │   ├── feedforward.py              # FeedForward
 │   ├── encoder.py                  # Encoder layer
@@ -96,7 +96,7 @@ from tape_biotransformer.config import ModelConfig, AttentionConfig, TrainingCon
 from tape_biotransformer.tasks.secondary_structure import SecondaryStructureTask
 
 model_cfg = ModelConfig(d_model=512, num_layers=12, num_heads=8)
-attn_cfg  = AttentionConfig(type="sliding3d", block_size=40, stride=15, window_size=7)
+attn_cfg  = AttentionConfig(type="homa", block_size=40, stride=15, window_size=7)
 train_cfg = TrainingConfig(batch_size=16, learning_rate=1e-4, epochs=20)
 
 tokenizer = TAPETokenizer(vocab="iupac")
@@ -123,7 +123,7 @@ model, history = task.train(train_lmdb, val_lmdb, tokenizer)
 
 ```python
 attn_cfg = AttentionConfig(
-    type="sliding3d",
+    type="homa",
     block_size=40,
     stride=15,
     window_size=7,
@@ -140,7 +140,7 @@ from tape_biotransformer.models import ProteinTransformer, PerResidueHead
 from tape_biotransformer.config import ModelConfig, AttentionConfig
 
 model_cfg = ModelConfig()
-attn_cfg  = AttentionConfig(type="sliding3d", block_size=40, stride=15)
+attn_cfg  = AttentionConfig(type="homa", block_size=40, stride=15)
 head      = PerResidueHead(d_model=512, num_classes=3)
 model     = ProteinTransformer(model_cfg, attn_cfg, head)
 
@@ -161,7 +161,7 @@ Four attention types are available via `get_attention(type, ...)` or `AttentionC
 | `"plain2d"` | `MultiHeadAttn2D` | Standard $O(L^2)$ scaled dot-product attention |
 | `"multiped2d"` | `Attn2D_MultiPed` | Sliding-window 2D attention — $O(L \cdot b^2)$ |
 | `"linformer2d"` | `Attn2DLinformer` | Low-rank 2D attention — $O(L \cdot k)$ |
-| `"sliding3d"` | `Attn2DMultiPed3Dslidingw` | **Main contribution** — A unified Transformer architecture combining blockwise 3D sliding-window and blockwise pairwise attention.|
+| `"homa"` | `HOMA` | **Main contribution** — A unified Transformer architecture combining blockwise 3D sliding-window and blockwise pairwise attention.|
 
 ### Complexity comparison
 
@@ -170,7 +170,7 @@ Four attention types are available via `get_attention(type, ...)` or `AttentionC
 | Standard 2D | $O(L^2)$ | $O(L^2)$ |
 | Sliding-window 2D | $O(L \cdot b^2)$ | $O(L \cdot b)$ |
 | Standard 3D | $O(L^3)$ | $O(L^2)$ |
-| **Sliding-window 3D** | $O(L \cdot w^2)$ | $O(L \cdot w)$ |
+| **HOMA** | $O(L \cdot w^2)$ | $O(L \cdot w)$ |
 
 $b$ = block size (default 40), $w$ = window size (default 7), $L$ = sequence length.
 
@@ -196,7 +196,7 @@ model_cfg = ModelConfig(
 
 # Attention
 attn_cfg = AttentionConfig(
-    type="sliding3d",
+    type="homa",
     block_size=40,       # tokens per sliding block
     stride=15,           # step between blocks
     window_size=7,       # local 3D context window
@@ -235,7 +235,7 @@ python examples/train_stability.py
 Each script trains three model variants sequentially:
 1. `plain2d` — standard 2D baseline
 2. `multiped2d` — sliding-window 2D baseline
-3. `sliding3d` — our 3D contribution (optionally initialised from the `multiped2d` checkpoint)
+3. `homa` — our main contribution (optionally initialised from the `multiped2d` checkpoint)
 
 ---
 
@@ -245,7 +245,7 @@ Checkpoints are saved automatically after every epoch and support seamless resum
 
 ```python
 # Training resumes from the last checkpoint automatically
-trainer = Trainer(config=train_cfg, attn_name="sliding3d")
+trainer = Trainer(config=train_cfg, attn_name="homa")
 model, history = trainer.fit(model, train_loader, val_loader, ...)
 ```
 
@@ -290,8 +290,8 @@ set_seed(42)   # seeds Python, NumPy, PyTorch CPU+GPU; enables cuDNN determinist
 If you use this code, please cite our paper:
 
 ```bibtex
-@article{biotransformer3d,
-  title   = {BioTransformer with Sliding-Window 3D Attention for Protein Sequence Modelling},
+@article{biotransformer_homa,
+  title   = {BioTransformer with HOMA (Higher-Order MultiHead Attention) for Protein Sequence Modelling},
   author  = {[Authors]},
   journal = {[Journal / Conference]},
   year    = {[Year]},
