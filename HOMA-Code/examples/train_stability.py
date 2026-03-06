@@ -75,7 +75,7 @@ if __name__ == "__main__":
     pretrained = os.path.join(CHECKPOINT_DIR, "stability_multiped2d.pt")
     run(
         AttentionConfig(
-            type="sliding3d",
+            type="homa",
             block_size=40,
             stride=15,
             window_size=7,
