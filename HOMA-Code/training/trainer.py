@@ -36,7 +36,7 @@ class Trainer:
     Args:
         config: Training hyperparameters.
         attn_name: Short name used for checkpoint file naming (e.g. the
-            attention type string such as ``"sliding3d"``).
+            attention type string such as ``"homa"``).
     """
 
     def __init__(self, config: TrainingConfig, attn_name: str = "model") -> None:
