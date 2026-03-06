@@ -10,9 +10,9 @@ Standard transformers compute pairwise interactions between sequence positions v
 
 $$\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^T}{\sqrt{d_h}}\right)V$$
 
-This work introduces a **third-order interaction term** through an additional learnable projection $L$:
+This work introduces a **third-order interaction term** through an additional learnable projection $U$:
 
-$$\text{scores}_{3D}[i,j,k] = \frac{(Q_i \odot K_j^{(w)} \odot L_k^{(w)}) \cdot \mathbf{1}}{\sqrt{d_h}}, \quad j,k \in [0,w)$$
+$$\text{scores}_{3D}[i,j,k] = \frac{(Q_i \odot K_j^{(w)} \odot U_k^{(w)}) \cdot \mathbf{1}}{\sqrt{d_h}}, \quad j,k \in [0,w)$$
 
 where $j$ and $k$ index positions within a local window of size $w$ around query position $i$.  The 2D and 3D outputs are fused by a small MLP.
 
