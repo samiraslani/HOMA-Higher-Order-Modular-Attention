@@ -4,12 +4,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from ..config import AttentionConfig, ModelConfig, TrainingConfig
-from ..data.collate import collate_ss3
-from ..data.datasets import SecondaryStructureDataset
-from ..evaluation.metrics import accuracy_per_position
-from ..models.protein_transformer import PerResidueHead, ProteinTransformer
-from ..training.trainer import Trainer
+from config import AttentionConfig, ModelConfig, TrainingConfig
+from data.collate import collate_ss3
+from data.datasets import SecondaryStructureDataset
+from evaluation.metrics import accuracy_per_position
+from models.protein_transformer import PerResidueHead, ProteinTransformer
+from training.trainer import Trainer
 
 NUM_CLASSES = 3  # H (helix), E (strand), C (coil)
 
