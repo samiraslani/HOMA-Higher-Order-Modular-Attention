@@ -23,8 +23,8 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 
-from ..config import TrainingConfig
-from ..utils.checkpointing import load_checkpoint, save_checkpoint
+from config import TrainingConfig
+from utils.checkpointing import load_checkpoint, save_checkpoint
 from .efficiency import EfficiencyTracker
 
 logger = logging.getLogger(__name__)
