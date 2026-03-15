@@ -3,12 +3,12 @@
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from ..config import AttentionConfig, ModelConfig, TrainingConfig
-from ..data.collate import collate_regression
-from ..data.datasets import StabilityDataset
-from ..evaluation.metrics import spearman_correlation
-from ..models.protein_transformer import GlobalRegressionHead, ProteinTransformer
-from ..training.trainer import Trainer
+from config import AttentionConfig, ModelConfig, TrainingConfig
+from data.collate import collate_regression
+from data.datasets import StabilityDataset
+from evaluation.metrics import spearman_correlation
+from models.protein_transformer import GlobalRegressionHead, ProteinTransformer
+from training.trainer import Trainer
 
 
 class StabilityTask:
