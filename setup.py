@@ -1,10 +1,10 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="tape_biotransformer",
+    name="HOMA",
     version="0.1.0",
     description=(
-        "BioTransformer with HOMA (Higher-Order MultiHead Attention) for protein sequence modelling"
+        "Transformer with HOMA (Higher-Order Modular Attention) for protein sequence modelling"
     ),
     packages=find_packages(),
     python_requires=">=3.8",
