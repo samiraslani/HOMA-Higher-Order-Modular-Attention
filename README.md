@@ -30,7 +30,8 @@ Transfer learning is supported: pretrained 2D weights ($W_q, W_k, W_v$) can be l
 ## Package structure
 
 ```
-tape_biotransformer/
+HOMA-Higher-Order-Modular-Attention
+├── README.md
 ├── config.py                       # ModelConfig, AttentionConfig, TrainingConfig
 ├── data/
 │   ├── datasets.py                 # SecondaryStructureDataset, FluorescenceDataset, StabilityDataset
@@ -69,9 +70,10 @@ tape_biotransformer/
 **Requirements:** Python ≥ 3.8, PyTorch ≥ 1.13
 
 ```bash
-git clone https://github.com/samiraslani/tape-biotransformer.git
-cd tape-biotransformer
+git clone https://github.com/samiraslani/HOMA-Higher-Order-Modular-Attention.git
+cd /content/HOMA-Higher-Order-Modular-Attention
 pip install -e .
+
 ```
 
 TAPE datasets and tokenizer are provided by the `tape_proteins` package:
