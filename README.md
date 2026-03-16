@@ -1,27 +1,38 @@
 # HOMA — Higher-Order Modular Attention
 
-A protein sequence transformer with **HOMA (Higher-Order Modular Attention)** that captures higher-order (three-way) interactions between sequence positions. Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
+HOMA (Higher-Order Modular Attention) is a protein sequence transformer that extends standard pairwise attention with **third-order (triadic) interactions** between sequence positions. The core contribution is a unified architecture that **fuses blockwise pairwise attention with windowed triadic block attention** through a learned MLP — capturing richer positional dependencies while remaining computationally tractable.
 
-Five attention mechanisms are available, ranging from the standard Vaswani baseline to the full triadic HOMA model:
+Standard transformers compute pairwise interactions via scaled dot-product attention:
 
-| Type | Class | Description |
-|---|---|---|
-| `plain2d` | `MultiHeadAttn2D` | Standard scaled dot-product attention (Vaswani et al., 2017) |
-| `blockwise2d` | `Attn2DBlockwise` | Pairwise attention computed over overlapping blocks |
-| `linformer2d` | `Attn2DLinformer` | Linformer attention — sequence length projected to low-rank dimension $k$ |
-| `homa` | `HOMA` | Fusion of blockwise pairwise attention and windowed triadic block attention |
-| `blockwise3d` | `MultiHeadAttn3D` | Triadic windowed block attention only (no 2D branch) |
+$$\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^T}{\sqrt{d_h}}\right)V$$
+
+HOMA introduces a **third-order interaction term** through an additional low-rank projection $U$:
+
+$$\text{scores}_{3D}[i,j,k] = \frac{(Q_i \odot K_j^{(w)} \odot U_k^{(w)}) \cdot \mathbf{1}}{\sqrt{d_h}}, \quad j,k \in [0,w)$$
+
+where $j$ and $k$ index positions within a local window of size $w$ around query position $i$. The 2D and 3D outputs are fused by a small MLP, giving the model access to both pairwise and triadic structure simultaneously. Two design choices keep computation tractable:
+
+| Technique | Effect |
+|---|---|
+| **Sliding-window blocking** | Restricts attention to overlapping blocks of length `block_size`, reducing complexity from $O(L^3)$ to $O(L \cdot w^2)$ |
+| **Low-rank U-matrix** | Factorises $U = W_{l_u} W_{l_v}$ with inner rank $r$, cutting 3D parameters by ~97% (262 k → 8 k for $d$=512, $r$=8) |
+
+Transfer learning is supported: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a `blockwise2d` checkpoint and optionally frozen, so only the 3D-specific parameters ($W_{l_u}$, $W_{l_v}$, fusion MLP) are trained from scratch.
+
+Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction (SS3), fluorescence prediction, and stability prediction.
+
+> **Paper:** [HOMA: Higher-Order Modular Attention for Protein Sequence Modelling](https://arxiv.org/abs/2603.11133)
 
 ---
 
 ## Contents
 
-- [Overview](#overview)
 - [Package structure](#package-structure)
 - [Installation](#installation)
 - [Dataset setup](#dataset-setup)
-- [Quick start](#quick-start)
+- [Architecture](#architecture)
 - [Attention mechanisms](#attention-mechanisms)
+- [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Running the examples](#running-the-examples)
 - [Training output](#training-output)
@@ -30,29 +41,6 @@ Five attention mechanisms are available, ranging from the standard Vaswani basel
 - [Reproducibility](#reproducibility)
 - [Citation](#citation)
 - [License](#license)
-
----
-
-## Overview
-
-Standard transformers compute pairwise interactions between sequence positions via scaled dot-product attention:
-
-$$\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^T}{\sqrt{d_h}}\right)V$$
-
-This work introduces a **third-order interaction term** through an additional learnable projection $U$:
-
-$$\text{scores}_{3D}[i,j,k] = \frac{(Q_i \odot K_j^{(w)} \odot U_k^{(w)}) \cdot \mathbf{1}}{\sqrt{d_h}}, \quad j,k \in [0,w)$$
-
-where $j$ and $k$ index positions within a local window of size $w$ around query position $i$.  The 2D and 3D outputs are fused by a small MLP.
-
-Two design choices keep the computation tractable:
-
-| Technique | Effect |
-|---|---|
-| **Sliding-window blocking** | Restricts attention to blocks of length `block_size`, reducing complexity from $O(L^2)$ / $O(L^3)$ to $O(L \cdot b^2)$ / $O(L \cdot w^2)$ |
-| **Low-rank U-matrix** | Factorises $U = W_{l_u} W_{l_v}$ with rank 8, cutting 3D parameters by ~97% (262 k → 8 k for d=512) |
-
-Transfer learning is supported: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a strong 2D baseline and optionally frozen, so only the 3D components ($W_{l_u}, W_{l_v}$, fusion MLP) are trained from scratch.
 
 ---
 
@@ -69,7 +57,7 @@ HOMA-Higher-Order-Modular-Attention
 │   ├── attention/
 │   │   ├── base.py                 # AttentionBase, shared sliding-block helpers
 │   │   ├── attention_2d.py         # MultiHeadAttn2D, Attn2DBlockwise, Attn2DLinformer
-│   │   ├── attention_3d.py         # HOMA  ← main contribution
+│   │   ├── attention_3d.py         # HOMA (main contribution), MultiHeadAttn3D
 │   │   └── __init__.py             # get_attention() factory
 │   ├── feedforward.py              # FeedForward
 │   ├── encoder.py                  # Encoder layer
@@ -143,6 +131,40 @@ If your datasets are stored elsewhere, update the dataset paths in the training 
 
 ---
 
+## Architecture
+
+![HOMA Architecture](figures/homa_architecture.png)
+
+*Figure 1: HOMA fuses a blockwise pairwise (2D) attention branch with a windowed triadic (3D) attention branch. The outputs of both branches are concatenated and passed through a fusion MLP to produce the final per-position representation.*
+
+---
+
+## Attention mechanisms
+
+Five attention types are available via `get_attention(type, ...)` or `AttentionConfig(type=...)`:
+
+| Type | Class | Description |
+|---|---|---|
+| `"plain2d"` | `MultiHeadAttn2D` | Standard scaled dot-product attention (Vaswani et al., 2017) — $O(L^2)$ |
+| `"blockwise2d"` | `Attn2DBlockwise` | Pairwise attention over overlapping sliding blocks — $O(L \cdot b^2)$ |
+| `"linformer2d"` | `Attn2DLinformer` | Linformer attention — sequence length projected to low-rank dimension $k$ — $O(L \cdot k)$ |
+| `"homa"` | `HOMA` | **Main contribution** — fusion of blockwise pairwise and windowed triadic block attention |
+| `"blockwise3d"` | `MultiHeadAttn3D` | Windowed triadic block attention only, no 2D branch — $O(L \cdot w^2)$ |
+
+### Complexity comparison
+
+| Variant | Attention complexity | Memory |
+|---|---|---|
+| `plain2d` — Standard 2D | $O(L^2)$ | $O(L^2)$ |
+| `blockwise2d` — Blockwise 2D | $O(L \cdot b^2)$ | $O(L \cdot b)$ |
+| `linformer2d` — Linformer 2D | $O(L \cdot k)$ | $O(L \cdot k)$ |
+| Standard 3D (naive) | $O(L^3)$ | $O(L^3)$ |
+| `blockwise3d` / `homa` — Blockwise 3D | $O(L \cdot w^2)$ | $O(L \cdot w)$ |
+
+$b$ = block size (default 30), $w$ = window size (default 7), $k$ = Linformer projection dimension, $L$ = sequence length.
+
+---
+
 ## Quick start
 
 ### Secondary structure prediction (SS3)
@@ -169,29 +191,6 @@ model, history = task.train(
 )
 ```
 
-### Fluorescence prediction
-
-```python
-from tape.datasets import LMDBDataset
-from tape.tokenizers import TAPETokenizer
-
-from config import ModelConfig, AttentionConfig, TrainingConfig
-from tasks.fluorescence import FluorescenceTask
-
-model_cfg = ModelConfig(d_model=512, num_layers=12, num_heads=8)
-attn_cfg  = AttentionConfig(type="homa", block_size=30, stride=15, window_size=3)
-train_cfg = TrainingConfig(batch_size=16, learning_rate=1e-4, epochs=10)
-
-tokenizer = TAPETokenizer(vocab="iupac")
-task = FluorescenceTask(model_cfg, attn_cfg, train_cfg)
-
-model, history = task.train(
-    train_lmdb=LMDBDataset("data/fluorescence/train.lmdb"),
-    val_lmdb=LMDBDataset("data/fluorescence/valid.lmdb"),
-    tokenizer=tokenizer,
-)
-```
-
 ### Transfer learning from a 2D baseline
 
 ```python
@@ -203,7 +202,7 @@ attn_cfg = AttentionConfig(
     stride=15,
     window_size=7,
     rank_3d=8,
-    pretrained_ckpt="checkpoints/blockwise2d.pt",  # pretrained 2D checkpoint
+    pretrained_ckpt="checkpoints/blockwise2d.pt",
     freeze_2d=False,   # set True to freeze W_q/W_k/W_v
 )
 ```
@@ -227,67 +226,15 @@ print(logits.shape)                        # (2, 128, 3)
 
 ---
 
-## Attention mechanisms
-
-Four attention types are available via `get_attention(type, ...)` or `AttentionConfig(type=...)`:
-
-| Type | Class | Description |
-|---|---|---|
-| `"plain2d"` | `MultiHeadAttn2D` | Standard $O(L^2)$ scaled dot-product attention |
-| `"blockwise2d"` | `Attn2DBlockwise` | Sliding-window 2D attention — $O(L \cdot b^2)$ |
-| `"linformer2d"` | `Attn2DLinformer` | Low-rank 2D attention — $O(L \cdot k)$ |
-| `"homa"` | `HOMA` | **Main contribution** — Combines blockwise 3D sliding-window and blockwise pairwise attention |
-
-### Complexity comparison
-
-| Variant | Attention complexity | Memory |
-|---|---|---|
-| Standard 2D | $O(L^2)$ | $O(L^2)$ |
-| Sliding-window 2D | $O(L \cdot b^2)$ | $O(L \cdot b)$ |
-| Standard 3D | $O(L^3)$ | $O(L^2)$ |
-| **HOMA** | $O(L \cdot w^2)$ | $O(L \cdot w)$ |
-
-$b$ = block size (default 30), $w$ = window size (default 7), $L$ = sequence length.
-
----
-
 ## Configuration
 
-All hyperparameters are defined in `config.py` as Python dataclasses with sensible defaults:
+All hyperparameters are defined as Python dataclasses in `config.py`. The three dataclasses are:
 
-```python
-from config import ModelConfig, AttentionConfig, TrainingConfig
+- **`ModelConfig`** — architecture settings: `vocab_size`, `d_model`, `num_layers`, `num_heads`, `dim_feedforward`, `dropout`, `max_seq_length`
+- **`AttentionConfig`** — attention type and its parameters: `type`, `block_size`, `stride`, `window_size`, `rank_3d`, `linformer_k`, `pretrained_ckpt`, `freeze_2d`
+- **`TrainingConfig`** — optimisation settings: `batch_size`, `learning_rate`, `epochs`, `warmup_steps`, `checkpoint_dir`, `num_workers`, `device`
 
-# Architecture
-model_cfg = ModelConfig(
-    vocab_size=30,           # IUPAC amino-acid vocabulary
-    d_model=512,
-    num_layers=12,
-    num_heads=8,
-    dim_feedforward=1024,
-    dropout=0.4,
-    max_seq_length=512,
-)
-
-# Attention
-attn_cfg = AttentionConfig(
-    type="homa",
-    block_size=30,       # tokens per sliding block
-    stride=15,           # step between blocks
-    window_size=7,       # local 3D context window
-    rank_3d=8,           # L-matrix inner rank
-    pretrained_ckpt=None,
-    freeze_2d=False,
-)
-
-# Training
-train_cfg = TrainingConfig(
-    batch_size=16,
-    learning_rate=1e-4,
-    epochs=20,
-    checkpoint_dir="checkpoints",
-)
-```
+See `config.py` for full defaults and parameter documentation.
 
 ---
 
@@ -307,10 +254,12 @@ python examples/train_fluorescence.py
 python examples/train_stability.py
 ```
 
-Each script trains three model variants sequentially:
-1. `plain2d` — standard 2D baseline
-2. `blockwise2d` — sliding-window 2D baseline
-3. `homa` — main contribution (optionally initialised from the `blockwise2d` checkpoint)
+Each script trains five model variants sequentially:
+1. `plain2d` — standard pairwise attention baseline
+2. `blockwise2d` — overlapping blocks of pairwise attention
+3. `linformer2d` — Linformer low-rank attention
+4. `blockwise3d` — windowed triadic block attention
+5. `homa` — main contribution, optionally initialised from the `blockwise2d` checkpoint
 
 ---
 
@@ -418,17 +367,19 @@ set_seed(42)   # seeds Python, NumPy, PyTorch CPU+GPU; enables cuDNN determinist
 If you use this code, please cite our paper:
 
 ```bibtex
-@article{homa,
+@article{amiraslani2026homa,
   title   = {HOMA: Higher-Order Modular Attention for Protein Sequence Modelling},
-  author  = {[Authors]},
-  journal = {[Journal / Conference]},
-  year    = {[Year]},
+  author  = {Amiraslani, Shirin and others},
+  journal = {arXiv preprint arXiv:2603.11133},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2603.11133},
 }
 ```
 
 ---
 
 ## License
+
 Copyright (c) 2025 Shirin Amiraslani
 All Rights Reserved.
 
