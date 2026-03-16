@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # Attention types that use sliding-window blocking and therefore need seq-len
 # to be aligned to (block_size, stride) before positional embeddings are
 # created.  The Encoder adjusts len_seq in kwargs accordingly.
-_SLIDING_ATTENTION_TYPES = {"blockwise2d", "homa"}
+_SLIDING_ATTENTION_TYPES = {"blockwise2d", "homa", "blockwise3d"}
 
 
 class Encoder(nn.Module):

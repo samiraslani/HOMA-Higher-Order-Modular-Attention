@@ -268,6 +268,19 @@ class ProteinTransformer(nn.Module):
             )
             return mask.as_strided(shape, strides_).contiguous()         # (B, Blk, L_b)
 
+        if attn_type == "blockwise3d":
+            block_size = self.attn_cfg.block_size
+            stride = self.attn_cfg.stride
+            B, L = input_ids.shape
+            num_blocks = (L - block_size) // stride + 1
+            shape = (B, num_blocks, block_size)
+            strides_ = (
+                mask.stride(0),
+                stride * mask.stride(1),
+                mask.stride(1),
+            )
+            return mask.as_strided(shape, strides_).contiguous()         # (B, Blk, L_b)
+
         # Fallback: standard 2D mask
         return mask.unsqueeze(1).unsqueeze(1)
 

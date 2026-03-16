@@ -1,6 +1,35 @@
-# TAPE BioTransformer with HOMA
+# HOMA — Higher-Order Modular Attention
 
-A protein sequence transformer with **HOMA (Higher-Order MultiHead Attention)** that captures higher-order (three-way) interactions between sequence positions.  Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
+A protein sequence transformer with **HOMA (Higher-Order MultiHead Attention)** that captures higher-order (three-way) interactions between sequence positions. Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
+
+Five attention mechanisms are available, ranging from the standard Vaswani baseline to the full triadic HOMA model:
+
+| Type | Class | Description |
+|---|---|---|
+| `plain2d` | `MultiHeadAttn2D` | Standard scaled dot-product attention (Vaswani et al., 2017) |
+| `blockwise2d` | `Attn2DBlockwise` | Pairwise attention computed over overlapping sliding blocks |
+| `linformer2d` | `Attn2DLinformer` | Linformer attention — sequence length projected to low-rank dimension $k$ |
+| `homa` | `HOMA` | Fusion of blockwise pairwise attention and windowed triadic block attention |
+| `blockwise3d` | `MultiHeadAttn3D` | Triadic windowed block attention only (no 2D branch) |
+
+---
+
+## Contents
+
+- [Overview](#overview)
+- [Package structure](#package-structure)
+- [Installation](#installation)
+- [Dataset setup](#dataset-setup)
+- [Quick start](#quick-start)
+- [Attention mechanisms](#attention-mechanisms)
+- [Configuration](#configuration)
+- [Running the examples](#running-the-examples)
+- [Training output](#training-output)
+- [Checkpointing](#checkpointing)
+- [Efficiency tracking](#efficiency-tracking)
+- [Reproducibility](#reproducibility)
+- [Citation](#citation)
+- [License](#license)
 
 ---
 
@@ -39,7 +68,7 @@ HOMA-Higher-Order-Modular-Attention
 ├── models/
 │   ├── attention/
 │   │   ├── base.py                 # AttentionBase, shared sliding-block helpers
-│   │   ├── attention_2d.py         # MultiHeadAttn2D, Attn2D_MultiPed, Attn2DLinformer
+│   │   ├── attention_2d.py         # MultiHeadAttn2D, Attn2DBlockwise, Attn2DLinformer
 │   │   ├── attention_3d.py         # HOMA  ← main contribution
 │   │   └── __init__.py             # get_attention() factory
 │   ├── feedforward.py              # FeedForward
@@ -76,8 +105,10 @@ git clone https://github.com/samiraslani/HOMA-Higher-Order-Modular-Attention.git
 cd HOMA-Higher-Order-Modular-Attention
 pip install -e .
 pip install tape_proteins
-
 ```
+
+---
+
 ## Dataset setup
 
 This repository does not include the benchmark datasets. TAPE datasets and tokenizer are provided by the `tape_proteins` package:
@@ -86,8 +117,9 @@ This repository does not include the benchmark datasets. TAPE datasets and token
 pip install tape_proteins
 ```
 
-Download the benchmark data following the [TAPE instructions](https://github.com/songlab-cal/tape#datasets). After downloading the datasets, place the LMDB files under the data/ directory using the following structure:
+Download the benchmark data following the [TAPE instructions](https://github.com/songlab-cal/tape#datasets). After downloading, place the LMDB files under the `data/` directory using the following structure:
 
+```
 data/
   secondary_structure/
     train.lmdb
@@ -103,10 +135,11 @@ data/
     train.lmdb
     valid.lmdb
     test.lmdb
+```
 
 If your datasets are stored elsewhere, update the dataset paths in the training scripts accordingly.
 
-**Note**: Training and evaluation scripts will raise a FileNotFoundError if the expected LMDB files are not present at the paths above.
+**Note**: Training and evaluation scripts will raise a `FileNotFoundError` if the expected LMDB files are not present at the paths above.
 
 ---
 
@@ -136,25 +169,41 @@ model, history = task.train(
 )
 ```
 
-### Fluorescence / stability prediction
+### Fluorescence prediction
 
 ```python
-from tape_biotransformer.tasks.fluorescence import FluorescenceTask
+from tape.datasets import LMDBDataset
+from tape.tokenizers import TAPETokenizer
 
+from config import ModelConfig, AttentionConfig, TrainingConfig
+from tasks.fluorescence import FluorescenceTask
+
+model_cfg = ModelConfig(d_model=512, num_layers=12, num_heads=8)
+attn_cfg  = AttentionConfig(type="homa", block_size=30, stride=15, window_size=3)
+train_cfg = TrainingConfig(batch_size=16, learning_rate=1e-4, epochs=10)
+
+tokenizer = TAPETokenizer(vocab="iupac")
 task = FluorescenceTask(model_cfg, attn_cfg, train_cfg)
-model, history = task.train(train_lmdb, val_lmdb, tokenizer)
+
+model, history = task.train(
+    train_lmdb=LMDBDataset("data/fluorescence/train.lmdb"),
+    val_lmdb=LMDBDataset("data/fluorescence/valid.lmdb"),
+    tokenizer=tokenizer,
+)
 ```
 
 ### Transfer learning from a 2D baseline
 
 ```python
+from config import AttentionConfig
+
 attn_cfg = AttentionConfig(
     type="homa",
-    block_size=40,
+    block_size=30,
     stride=15,
     window_size=7,
     rank_3d=8,
-    pretrained_ckpt="checkpoints-ss3/multiped2d.pt",  # pretrained 2D checkpoint
+    pretrained_ckpt="checkpoints/blockwise2d.pt",  # pretrained 2D checkpoint
     freeze_2d=False,   # set True to freeze W_q/W_k/W_v
 )
 ```
@@ -162,11 +211,11 @@ attn_cfg = AttentionConfig(
 ### Using the model directly
 
 ```python
-from tape_biotransformer.models import ProteinTransformer, PerResidueHead
-from tape_biotransformer.config import ModelConfig, AttentionConfig
+from config import ModelConfig, AttentionConfig
+from models import ProteinTransformer, PerResidueHead
 
 model_cfg = ModelConfig()
-attn_cfg  = AttentionConfig(type="homa", block_size=40, stride=15)
+attn_cfg  = AttentionConfig(type="homa", block_size=30, stride=15)
 head      = PerResidueHead(d_model=512, num_classes=3)
 model     = ProteinTransformer(model_cfg, attn_cfg, head)
 
@@ -185,9 +234,9 @@ Four attention types are available via `get_attention(type, ...)` or `AttentionC
 | Type | Class | Description |
 |---|---|---|
 | `"plain2d"` | `MultiHeadAttn2D` | Standard $O(L^2)$ scaled dot-product attention |
-| `"multiped2d"` | `Attn2D_MultiPed` | Sliding-window 2D attention — $O(L \cdot b^2)$ |
+| `"blockwise2d"` | `Attn2DBlockwise` | Sliding-window 2D attention — $O(L \cdot b^2)$ |
 | `"linformer2d"` | `Attn2DLinformer` | Low-rank 2D attention — $O(L \cdot k)$ |
-| `"homa"` | `HOMA` | **Main contribution** — A unified Transformer architecture combining blockwise 3D sliding-window and blockwise pairwise attention.|
+| `"homa"` | `HOMA` | **Main contribution** — Combines blockwise 3D sliding-window and blockwise pairwise attention |
 
 ### Complexity comparison
 
@@ -198,7 +247,7 @@ Four attention types are available via `get_attention(type, ...)` or `AttentionC
 | Standard 3D | $O(L^3)$ | $O(L^2)$ |
 | **HOMA** | $O(L \cdot w^2)$ | $O(L \cdot w)$ |
 
-$b$ = block size (default 40), $w$ = window size (default 7), $L$ = sequence length.
+$b$ = block size (default 30), $w$ = window size (default 7), $L$ = sequence length.
 
 ---
 
@@ -207,7 +256,7 @@ $b$ = block size (default 40), $w$ = window size (default 7), $L$ = sequence len
 All hyperparameters are defined in `config.py` as Python dataclasses with sensible defaults:
 
 ```python
-from tape_biotransformer.config import ModelConfig, AttentionConfig, TrainingConfig
+from config import ModelConfig, AttentionConfig, TrainingConfig
 
 # Architecture
 model_cfg = ModelConfig(
@@ -223,7 +272,7 @@ model_cfg = ModelConfig(
 # Attention
 attn_cfg = AttentionConfig(
     type="homa",
-    block_size=40,       # tokens per sliding block
+    block_size=30,       # tokens per sliding block
     stride=15,           # step between blocks
     window_size=7,       # local 3D context window
     rank_3d=8,           # L-matrix inner rank
@@ -260,8 +309,59 @@ python examples/train_stability.py
 
 Each script trains three model variants sequentially:
 1. `plain2d` — standard 2D baseline
-2. `multiped2d` — sliding-window 2D baseline
-3. `homa` — our main contribution (optionally initialised from the `multiped2d` checkpoint)
+2. `blockwise2d` — sliding-window 2D baseline
+3. `homa` — main contribution (optionally initialised from the `blockwise2d` checkpoint)
+
+---
+
+## Training output
+
+At the start of every training run the trainer prints a one-time setup summary so you can verify the configuration at a glance.
+
+**Standard run:**
+
+```
+--------------------------------------------------
+  Training Setup
+--------------------------------------------------
+  Attention type    : homa
+  Rank              : 8
+  Device            : cuda
+  Epochs            : 20
+  Trainable params  : 25,520,131
+--------------------------------------------------
+```
+
+**With transfer learning** (`pretrained_ckpt` is set), the model first reports which checkpoint was used to initialise the 2D projection weights:
+
+```
+  Transfer learning : blockwise 2D parameters (W_q, W_k, W_v) loaded from: checkpoints/blockwise2d.pt
+```
+
+**With frozen layers** (`freeze_2d=True`), the summary additionally shows which modules are frozen and how many parameters are excluded from the optimiser:
+
+```
+  Transfer learning : blockwise 2D parameters (W_q, W_k, W_v) loaded from: checkpoints/blockwise2d.pt
+  Frozen layers     : W_q, W_k, W_v  (only W_l_u, W_l_v, fusion_layer will be trained)
+
+--------------------------------------------------
+  Training Setup
+--------------------------------------------------
+  Attention type    : homa
+  Rank              : 8
+  Device            : cuda
+  Epochs            : 20
+  Trainable params  : 1,180,160
+  Frozen params     : 786,432
+  Frozen modules    : encoder_layers.0.mha.W_k, encoder_layers.0.mha.W_q, ...
+--------------------------------------------------
+```
+
+Each epoch then prints a one-line progress update:
+
+```
+Epoch 1/20 | Train loss 1.2340 | Val loss 1.1890 | Val metric 0.6123
+```
 
 ---
 
@@ -270,6 +370,8 @@ Each script trains three model variants sequentially:
 Checkpoints are saved automatically after every epoch and support seamless resumption:
 
 ```python
+from training.trainer import Trainer
+
 # Training resumes from the last checkpoint automatically
 trainer = Trainer(config=train_cfg, attn_name="homa")
 model, history = trainer.fit(model, train_loader, val_loader, ...)
@@ -278,7 +380,7 @@ model, history = trainer.fit(model, train_loader, val_loader, ...)
 Manual save / load:
 
 ```python
-from tape_biotransformer.utils import save_checkpoint, load_checkpoint
+from utils import save_checkpoint, load_checkpoint
 
 save_checkpoint("my_checkpoint.pt", model, optimizer, epoch=5)
 ckpt = load_checkpoint("my_checkpoint.pt", model, optimizer)
@@ -305,7 +407,7 @@ model, history = task.train(..., track_efficiency=True)
 ## Reproducibility
 
 ```python
-from tape_biotransformer.utils import set_seed
+from utils import set_seed
 set_seed(42)   # seeds Python, NumPy, PyTorch CPU+GPU; enables cuDNN deterministic mode
 ```
 
@@ -316,8 +418,8 @@ set_seed(42)   # seeds Python, NumPy, PyTorch CPU+GPU; enables cuDNN determinist
 If you use this code, please cite our paper:
 
 ```bibtex
-@article{biotransformer_homa,
-  title   = {BioTransformer with HOMA (Higher-Order MultiHead Attention) for Protein Sequence Modelling},
+@article{homa,
+  title   = {HOMA: Higher-Order Modular Attention for Protein Sequence Modelling},
   author  = {[Authors]},
   journal = {[Journal / Conference]},
   year    = {[Year]},
@@ -327,7 +429,7 @@ If you use this code, please cite our paper:
 ---
 
 ## License
-Copyright (c) 2025 Shirin Amiraslani  
+Copyright (c) 2025 Shirin Amiraslani
 All Rights Reserved.
 
 You may not copy, modify, distribute, or use this software for
