@@ -17,7 +17,7 @@ where $j$ and $k$ index positions within a local window of size $w$ around query
 | **Sliding-window blocking** | Restricts attention to overlapping blocks of length `block_size`, reducing complexity from $O(L^3)$ to $O(L \cdot w^2)$ |
 | **Low-rank U-matrix** | Factorises $U = W_{l_u} W_{l_v}$ with inner rank $r$, cutting 3D parameters by ~97% (262 k → 8 k for $d$=512, $r$=8) |
 
-Transfer learning is supported: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a `blockwise2d` checkpoint and optionally frozen, so only the 3D-specific parameters ($W_{l_u}$, $W_{l_v}$, fusion MLP) are trained from scratch.
+Transfer learning is supported for training HOMA attention mechanism: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a `blockwise2d` checkpoint and optionally frozen, so only the 3D-specific parameters ($W_{l_u}$, $W_{l_v}$, fusion MLP) are trained from scratch.
 
 Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction (SS3), fluorescence prediction, and stability prediction.
 
