@@ -378,4 +378,4 @@ If you use this code, please cite our paper:
 
 ## License
 
-This code is released under the **Apache License 2.0** — a perpetual, worldwide, non-exclusive, royalty-free license permitting use, reproduction, modification, and distribution. See the [LICENSE](LICENSE) file for the full terms.
+This code is released under the **Apache License 2.0**.
