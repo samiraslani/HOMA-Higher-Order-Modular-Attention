@@ -70,9 +70,9 @@ def run(attn_cfg: AttentionConfig, pretrained_ckpt=None) -> None:
 
 if __name__ == "__main__":
     run(AttentionConfig(type="plain2d"))
-    run(AttentionConfig(type="multiped2d", block_size=40, stride=15))
+    run(AttentionConfig(type="blockwise2d", block_size=30, stride=15))
 
-    pretrained = os.path.join(CHECKPOINT_DIR, "stability_multiped2d.pt")
+    pretrained = os.path.join(CHECKPOINT_DIR, "stability_blockwise2d.pt")
     run(
         AttentionConfig(
             type="homa",

@@ -7,20 +7,20 @@ Import ``get_attention`` to instantiate any supported attention class by name.
 import logging
 from typing import Any
 
-from .attention_2d import Attn2D_MultiPed, Attn2DLinformer, MultiHeadAttn2D
+from .attention_2d import Attn2DBlockwise, Attn2DLinformer, MultiHeadAttn2D
 from .attention_3d import HOMA
 
 logger = logging.getLogger(__name__)
 
 # Supported attention type strings
-_ATTENTION_TYPES = ("plain2d", "multiped2d", "linformer2d", "homa")
+_ATTENTION_TYPES = ("plain2d", "blockwise2d", "linformer2d", "homa")
 
 
 def get_attention(attn_type: str, **kwargs: Any):
     """Instantiate an attention module by name.
 
     Args:
-        attn_type: One of ``"plain2d"``, ``"multiped2d"``, ``"linformer2d"``,
+        attn_type: One of ``"plain2d"``, ``"blockwise2d"``, ``"linformer2d"``,
             or ``"homa"``.
         **kwargs: Parameters forwarded to the attention constructor.  Common
             keys: ``num_heads``, ``d_model``, ``len_seq``, ``block_size``,
@@ -43,8 +43,8 @@ def get_attention(attn_type: str, **kwargs: Any):
             d_model=kwargs["d_model"],
         )
 
-    if attn_type == "multiped2d":
-        return Attn2D_MultiPed(
+    if attn_type == "blockwise2d":
+        return Attn2DBlockwise(
             num_heads=kwargs["num_heads"],
             d_model=kwargs["d_model"],
             block_size=kwargs["block_size"],
@@ -82,7 +82,7 @@ def get_attention(attn_type: str, **kwargs: Any):
 __all__ = [
     "get_attention",
     "MultiHeadAttn2D",
-    "Attn2D_MultiPed",
+    "Attn2DBlockwise",
     "Attn2DLinformer",
     "HOMA",
 ]

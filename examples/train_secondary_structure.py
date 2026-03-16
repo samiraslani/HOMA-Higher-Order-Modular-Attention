@@ -89,11 +89,11 @@ if __name__ == "__main__":
     run(AttentionConfig(type="plain2d"))
 
     # 2. Sliding-window 2D (efficiency baseline)
-    run(AttentionConfig(type="multiped2d", block_size=40, stride=15))
+    run(AttentionConfig(type="blockwise2d", block_size=30, stride=15))
 
-    # 3. HOMA with transfer from the multiped2d checkpoint
+    # 3. HOMA with transfer from the blockwise2d checkpoint
     #    (comment out pretrained_ckpt to train from scratch)
-    pretrained = os.path.join(CHECKPOINT_DIR, "multiped2d.pt")
+    pretrained = os.path.join(CHECKPOINT_DIR, "blockwise2d.pt")
     run(
         AttentionConfig(
             type="homa",
