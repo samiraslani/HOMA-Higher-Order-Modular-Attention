@@ -258,7 +258,7 @@ Each script trains five model variants sequentially:
 2. `blockwise2d` — overlapping blocks of pairwise attention
 3. `linformer2d` — Linformer low-rank attention
 4. `blockwise3d` — windowed triadic block attention
-5. `homa` — main contribution, optionally initialised from the `blockwise2d` checkpoint
+5. `homa` — fusion of blockwise 2D and windowed triadic block attention
 
 ---
 
