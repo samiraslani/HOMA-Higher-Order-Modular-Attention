@@ -54,8 +54,7 @@ class SecondaryStructureTask:
         return ProteinTransformer(
             model_cfg=self.model_cfg,
             attn_cfg=self.attn_cfg,
-            head=head,
-            pretrained_2d_ckpt=pretrained_2d_ckpt,
+            head=head
         )
 
     def make_loader(self, lmdb_dataset, tokenizer, shuffle: bool) -> DataLoader:
