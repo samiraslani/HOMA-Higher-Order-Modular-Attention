@@ -7,7 +7,7 @@ Five attention mechanisms are available, ranging from the standard Vaswani basel
 | Type | Class | Description |
 |---|---|---|
 | `plain2d` | `MultiHeadAttn2D` | Standard scaled dot-product attention (Vaswani et al., 2017) |
-| `blockwise2d` | `Attn2DBlockwise` | Pairwise attention computed over overlapping sliding blocks |
+| `blockwise2d` | `Attn2DBlockwise` | Pairwise attention computed over overlapping blocks |
 | `linformer2d` | `Attn2DLinformer` | Linformer attention — sequence length projected to low-rank dimension $k$ |
 | `homa` | `HOMA` | Fusion of blockwise pairwise attention and windowed triadic block attention |
 | `blockwise3d` | `MultiHeadAttn3D` | Triadic windowed block attention only (no 2D branch) |
