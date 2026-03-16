@@ -146,7 +146,7 @@ Five attention types are available via `get_attention(type, ...)` or `AttentionC
 | Type | Class | Description |
 |---|---|---|
 | `"plain2d"` | `MultiHeadAttn2D` | Standard scaled dot-product attention (Vaswani et al., 2017) — $O(L^2)$ |
-| `"blockwise2d"` | `Attn2DBlockwise` | Pairwise attention over overlapping sliding blocks — $O(L \cdot b^2)$ |
+| `"blockwise2d"` | `Attn2DBlockwise` | Pairwise attention over overlapping blocks — $O(L \cdot b^2)$ |
 | `"linformer2d"` | `Attn2DLinformer` | Linformer attention — sequence length projected to low-rank dimension $k$ — $O(L \cdot k)$ |
 | `"homa"` | `HOMA` | **Main contribution** — fusion of blockwise pairwise and windowed triadic block attention |
 | `"blockwise3d"` | `MultiHeadAttn3D` | Windowed triadic block attention only, no 2D branch — $O(L \cdot w^2)$ |
