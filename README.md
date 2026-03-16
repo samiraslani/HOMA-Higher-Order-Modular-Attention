@@ -1,6 +1,6 @@
 # HOMA — Higher-Order Modular Attention
 
-A protein sequence transformer with **HOMA (Higher-Order MultiHead Attention)** that captures higher-order (three-way) interactions between sequence positions. Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
+A protein sequence transformer with **HOMA (Higher-Order Modular Attention)** that captures higher-order (three-way) interactions between sequence positions. Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
 
 Five attention mechanisms are available, ranging from the standard Vaswani baseline to the full triadic HOMA model:
 
