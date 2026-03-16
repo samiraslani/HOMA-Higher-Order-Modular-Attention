@@ -139,14 +139,12 @@ class HOMA(AttentionBase):
                     "load_from_pretrained_2d=True"
                 )
             self.load_pretrained_2d(pretrained_2d_ckpt, prefix_hint)
-            print(f"  Transfer learning : blockwise 2D parameters (W_q, W_k, W_v) loaded from: {pretrained_2d_ckpt}")
 
         if freeze_2d:
             for layer in (self.W_q, self.W_k, self.W_v):
                 for p in layer.parameters():
                     p.requires_grad_(False)
             logger.info("Froze pretrained W_q, W_k, W_v")
-            print("  Frozen layers     : W_q, W_k, W_v  (only W_l_u, W_l_v, fusion_layer will be trained)")
 
     # ------------------------------------------------------------------
     # Pretrained weight loading
