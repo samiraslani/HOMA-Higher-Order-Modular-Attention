@@ -1,13 +1,13 @@
 # HOMA — Higher-Order Modular Attention
 
-A protein sequence transformer with **HOMA (Higher-Order MultiHead Attention)** that captures higher-order (three-way) interactions between sequence positions. Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
+A protein sequence transformer with **HOMA (Higher-Order Modular Attention)** that captures higher-order (three-way) interactions between sequence positions. Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction, fluorescence prediction, and stability prediction.
 
 Five attention mechanisms are available, ranging from the standard Vaswani baseline to the full triadic HOMA model:
 
 | Type | Class | Description |
 |---|---|---|
 | `plain2d` | `MultiHeadAttn2D` | Standard scaled dot-product attention (Vaswani et al., 2017) |
-| `blockwise2d` | `Attn2DBlockwise` | Pairwise attention computed over overlapping sliding blocks |
+| `blockwise2d` | `Attn2DBlockwise` | Pairwise attention computed over overlapping blocks |
 | `linformer2d` | `Attn2DLinformer` | Linformer attention — sequence length projected to low-rank dimension $k$ |
 | `homa` | `HOMA` | Fusion of blockwise pairwise attention and windowed triadic block attention |
 | `blockwise3d` | `MultiHeadAttn3D` | Triadic windowed block attention only (no 2D branch) |
