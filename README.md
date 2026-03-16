@@ -10,12 +10,13 @@ HOMA introduces a **third-order interaction term** through an additional low-ran
 
 $$\text{scores}_{3D}[i,j,k] = \frac{(Q_i \odot K_j^{(w)} \odot U_k^{(w)}) \cdot \mathbf{1}}{\sqrt{d_h}}, \quad j,k \in [0,w)$$
 
-where $j$ and $k$ index positions within a local window of size $w$ around query position $i$. The 2D and 3D outputs are fused by a small MLP, giving the model access to both pairwise and triadic structure simultaneously. Two design choices keep computation tractable:
+where $j$ and $k$ index positions within a local window of size $w$ around query position $i$. The 2D and 3D outputs are fused by a small MLP, giving the model access to both pairwise and triadic structure simultaneously. Three design choices keep computation tractable:
 
-| Technique | Effect |
-|---|---|
-| **Sliding-window blocking** | Restricts attention to overlapping blocks of length `block_size`, reducing complexity from $O(L^3)$ to $O(L \cdot w^2)$ |
-| **Low-rank U-matrix** | Factorises $U = W_{l_u} W_{l_v}$ with inner rank $r$, cutting 3D parameters by ~97% (262 k → 8 k for $d$=512, $r$=8) |
+| # | Technique | Effect |
+|---|---|---|
+| 1 | **Overlapping blocks** | The sequence of length $L$ is partitioned into $T$ overlapping blocks of length $\ell$, applied to both the pairwise and triadic branches. This reduces global $O(L^2)$ / $O(L^3)$ cost to a block-local computation. |
+| 2 | **Local window for triadic attention** | Within each block, the triadic branch further restricts interactions to a sliding window of size $w$ around each query position, reducing the per-block triadic cost from $O(\ell^3)$ to $O(\ell \cdot w^2)$. |
+| 3 | **Low-rank U-matrix** | The third projection is factorised as $U = W_{l_u} W_{l_v}$ with inner rank $r$, cutting 3D parameters by ~97% (262 k → 8 k for $d$=512, $r$=8). |
 
 Transfer learning is supported for training HOMA attention mechanism: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a `blockwise2d` checkpoint and optionally frozen, so only the 3D-specific parameters ($W_{l_u}$, $W_{l_v}$, fusion MLP) are trained from scratch.
 
@@ -38,7 +39,6 @@ Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated
 - [Training output](#training-output)
 - [Checkpointing](#checkpointing)
 - [Efficiency tracking](#efficiency-tracking)
-- [Reproducibility](#reproducibility)
 - [Citation](#citation)
 - [License](#license)
 
@@ -49,6 +49,7 @@ Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated
 ```
 HOMA-Higher-Order-Modular-Attention
 ├── README.md
+├── LICENSE
 ├── config.py                       # ModelConfig, AttentionConfig, TrainingConfig
 ├── data/
 │   ├── datasets.py                 # SecondaryStructureDataset, FluorescenceDataset, StabilityDataset
@@ -153,15 +154,22 @@ Five attention types are available via `get_attention(type, ...)` or `AttentionC
 
 ### Complexity comparison
 
-| Variant | Attention complexity | Memory |
+| Variant | Compute | Memory |
 |---|---|---|
-| `plain2d` — Standard 2D | $O(L^2)$ | $O(L^2)$ |
-| `blockwise2d` — Blockwise 2D | $O(L \cdot b^2)$ | $O(L \cdot b)$ |
-| `linformer2d` — Linformer 2D | $O(L \cdot k)$ | $O(L \cdot k)$ |
-| Standard 3D (naive) | $O(L^3)$ | $O(L^3)$ |
-| `blockwise3d` / `homa` — Blockwise 3D | $O(L \cdot w^2)$ | $O(L \cdot w)$ |
+| `plain2d` — Standard 2D | $O(L^2 d_h)$ | $O(L^2)$ |
+| `blockwise2d` — Blockwise 2D | $O(T\,\ell^2 d_h)$ | $O(T\,\ell^2)$ |
+| `linformer2d` — Linformer 2D | $O(L\,k\,d_h)$ | $O(L\,k)$ |
+| Standard 3D (naive) | $O(L^3 d_h)$ | $O(L^3)$ |
+| `blockwise3d` — Blockwise triadic | $O(T\,\ell\,w^2 d_h)$ | $O(T\,\ell\,w^2)$ |
+| `homa` — Pairwise + triadic fusion | $O\!\left(T\,\ell^2 d_h + T\,\ell\,w^2 d_h\right)$ | $O\!\left(T\,\ell^2 + T\,\ell\,w^2 d_h\right)$ |
 
-$b$ = block size (default 30), $w$ = window size (default 7), $k$ = Linformer projection dimension, $L$ = sequence length.
+Per-block, per-head HOMA cost:
+
+$$\text{Compute}_{\text{HOMA}} = \mathcal{O}\!\left(\ell^{2} d_{\text{head}} + \ell\, w^{2} d_{\text{head}}\right)$$
+
+$$\text{Memory}_{\text{HOMA}} = \mathcal{O}\!\left(\ell^{2} + \ell\, w^{2} d_{\text{head}}\right)$$
+
+$T$ = number of overlapping blocks, $\ell$ = block size (default 30), $w$ = window size (default 7), $k$ = Linformer projection dimension, $d_h$ = head dimension, $L$ = sequence length.
 
 ---
 
@@ -352,15 +360,6 @@ model, history = task.train(..., track_efficiency=True)
 
 ---
 
-## Reproducibility
-
-```python
-from utils import set_seed
-set_seed(42)   # seeds Python, NumPy, PyTorch CPU+GPU; enables cuDNN deterministic mode
-```
-
----
-
 ## Citation
 
 If you use this code, please cite our paper:
@@ -379,9 +378,4 @@ If you use this code, please cite our paper:
 
 ## License
 
-Copyright (c) 2025 Shirin Amiraslani
-All Rights Reserved.
-
-You may not copy, modify, distribute, or use this software for
-any commercial or research purposes without explicit written
-permission from the author.
+This code is released under the **Apache License 2.0** — a perpetual, worldwide, non-exclusive, royalty-free license permitting use, reproduction, modification, and distribution. See the [LICENSE](LICENSE) file for the full terms.
