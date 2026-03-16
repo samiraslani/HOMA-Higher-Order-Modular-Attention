@@ -1,6 +1,6 @@
 # HOMA — Higher-Order Modular Attention
 
-HOMA (Higher-Order Modular Attention) is a protein sequence transformer that extends standard pairwise attention with **third-order (triadic) interactions** between sequence positions. The core contribution is a unified architecture that **fuses blockwise pairwise attention with windowed triadic block attention** through a learned MLP — capturing richer positional dependencies while remaining computationally tractable.
+HOMA (Higher-Order Modular Attention) is a sequence transformer that extends standard pairwise attention with **third-order (triadic) interactions** between sequence positions. The core contribution is a unified architecture that **fuses pairwise attention with triadic attention** through a learned MLP — capturing richer positional dependencies while remaining computationally tractable.
 
 Standard transformers compute pairwise interactions via scaled dot-product attention:
 
