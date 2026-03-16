@@ -149,6 +149,7 @@ class ProteinTransformer(nn.Module):
         model_cfg: ModelConfig,
         attn_cfg: AttentionConfig,
         head: nn.Module,
+        pretrained_2d_ckpt: Optional[str] = None,
         load_ffn_pretrained: bool = False,
         freeze_ffn: bool = False,
     ) -> None:
