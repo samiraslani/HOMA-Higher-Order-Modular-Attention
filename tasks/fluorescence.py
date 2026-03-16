@@ -7,6 +7,7 @@ from config import AttentionConfig, ModelConfig, TrainingConfig
 from data.collate import collate_regression
 from data.datasets import FluorescenceDataset
 from evaluation.metrics import spearman_correlation
+from models.encoder import _SLIDING_ATTENTION_TYPES
 from models.protein_transformer import GlobalRegressionHead, ProteinTransformer
 from training.trainer import Trainer
 
@@ -44,8 +45,14 @@ class FluorescenceTask:
 
     def build_model(self, pretrained_2d_ckpt=None) -> ProteinTransformer:
         """Instantiate the transformer model with a global regression head."""
+        len_seq = self.model_cfg.max_seq_length
+        if self.attn_cfg.type.lower() in _SLIDING_ATTENTION_TYPES:
+            remainder = (len_seq - self.attn_cfg.block_size) % self.attn_cfg.stride
+            pad_len = (self.attn_cfg.stride - remainder) % self.attn_cfg.stride
+            len_seq += pad_len
         head = GlobalRegressionHead(
             d_model=self.model_cfg.d_model,
+            len_seq=len_seq,
             d_ff=self.model_cfg.dim_feedforward,
         )
         return ProteinTransformer(
