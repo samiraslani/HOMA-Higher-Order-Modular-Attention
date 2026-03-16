@@ -134,9 +134,9 @@ If your datasets are stored elsewhere, update the dataset paths in the training 
 
 ## Architecture
 
-![HOMA Architecture](figures/homa_architecture.png)
+<img width="744" height="396" alt="HOMA_architecture (1)" src="https://github.com/user-attachments/assets/b046c42a-00a9-4284-97e6-147a3634eab8" />
 
-*Figure 1: HOMA fuses a blockwise pairwise (2D) attention branch with a windowed triadic (3D) attention branch. The outputs of both branches are concatenated and passed through a fusion MLP to produce the final per-position representation.*
+**Figure 1.** HOMA combines a blockwise pairwise (2D) attention pathway with a parallel windowed triadic (3D) attention pathway. Starting from shared linear projections \(Q\), \(K\), \(U\), and \(V\), both branches compute attention within overlapping local blocks. Their outputs are concatenated and passed through a fusion MLP to produce the final per-position representation. Greyed squares indicate the local overlapping regions attended by each attention mechanism.
 
 ---
 
