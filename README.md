@@ -161,13 +161,13 @@ Five attention types are available via `get_attention(type, ...)` or `AttentionC
 | `linformer2d` — Linformer 2D | $O(L\,k\,d_h)$ | $O(L\,k)$ |
 | Standard 3D (naive) | $O(L^3 d_h)$ | $O(L^3)$ |
 | `blockwise3d` — Blockwise triadic | $O(T\,\ell\,w^2 d_h)$ | $O(T\,\ell\,w^2)$ |
-| `homa` — Pairwise + triadic fusion | $O\!\left(T\,\ell^2 d_h + T\,\ell\,w^2 d_h\right)$ | $O\!\left(T\,\ell^2 + T\,\ell\,w^2 d_h\right)$ |
+| `homa` — Pairwise + triadic fusion | $O\left(T\,\ell^2 d_h + T\,\ell\,w^2 d_h\right)$ | $O\left(T\,\ell^2 + T\,\ell\,w^2 d_h\right)$ |
 
 Per-block, per-head HOMA cost:
 
-$$\text{Compute}_{\text{HOMA}} = \mathcal{O}\!\left(\ell^{2} d_{\text{head}} + \ell\, w^{2} d_{\text{head}}\right)$$
+$$\text{Compute}_{\text{HOMA}} = \mathcal{O}\left(\ell^{2} d_{\text{head}} + \ell\, w^{2} d_{\text{head}}\right)$$
 
-$$\text{Memory}_{\text{HOMA}} = \mathcal{O}\!\left(\ell^{2} + \ell\, w^{2} d_{\text{head}}\right)$$
+$$\text{Memory}_{\text{HOMA}} = \mathcal{O}\left(\ell^{2} + \ell\, w^{2} d_{\text{head}}\right)$$
 
 $T$ = number of overlapping blocks, $\ell$ = block size (default 30), $w$ = window size (default 7), $k$ = Linformer projection dimension, $d_h$ = head dimension, $L$ = sequence length.
 
