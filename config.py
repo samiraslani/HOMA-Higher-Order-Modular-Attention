@@ -44,7 +44,7 @@ class AttentionConfig:
     ---------------
     ``"plain2d"``
         Standard multi-head scaled dot-product attention.
-    ``"multiped2d"``
+    ``"blockwise2d"``
         Sliding-window 2D attention (block_size, stride).
     ``"linformer2d"``
         Low-rank 2D attention (linformer_k, max_seq_length from ModelConfig).
@@ -68,8 +68,8 @@ class AttentionConfig:
     """
     type: str = "plain2d"
 
-    # Sliding-window (multiped2d / homa)
-    block_size: int = 40
+    # Sliding-window (blockwise2d / homa)
+    block_size: int = 30
     stride: int = 15
 
     # Linformer

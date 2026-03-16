@@ -126,7 +126,7 @@ class ProteinTransformer(nn.Module):
 
     - ``plain2d``    → ``(B, 1, 1, L)``
     - ``linformer2d`` → ``(B, 1, L, 1)``
-    - ``multiped2d`` / ``homa`` → ``(B, Blk, L_b)``
+    - ``blockwise2d`` / ``homa`` → ``(B, Blk, L_b)``
 
     Sequence alignment for sliding-window types
     --------------------------------------------
@@ -241,7 +241,7 @@ class ProteinTransformer(nn.Module):
         if attn_type == "linformer2d":
             return mask.unsqueeze(1).unsqueeze(3)                  # (B, 1, L, 1)
 
-        if attn_type in ("multiped2d", "homa"):
+        if attn_type in ("blockwise2d", "homa"):
             # Produce block-shaped mask: (B, Blk, L_b)
             block_size = self.attn_cfg.block_size
             stride = self.attn_cfg.stride

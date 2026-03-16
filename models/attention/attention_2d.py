@@ -4,7 +4,7 @@
 Three classes are provided, all inheriting from ``AttentionBase``:
 
 * ``MultiHeadAttn2D``      — standard scaled dot-product attention
-* ``Attn2D_MultiPed``      — sliding-window attention
+* ``Attn2DBlockwise``      — sliding-window attention
 * ``Attn2DLinformer``      — low-rank (Linformer) attention
 """
 
@@ -84,8 +84,8 @@ class MultiHeadAttn2D(AttentionBase):
         return self.W_o(out)
 
 
-class Attn2D_MultiPed(AttentionBase):
-    """Sliding-window (multi-pedestrian) 2D self-attention.
+class Attn2DBlockwise(AttentionBase):
+    """Sliding-window (blockwise) 2D self-attention.
 
     The input sequence is split into overlapping blocks of length
     ``block_size`` with step ``stride``.  Standard 2D attention is computed
@@ -107,7 +107,7 @@ class Attn2D_MultiPed(AttentionBase):
         num_heads: int,
         d_model: int,
         stride: int = 15,
-        block_size: int = 40,
+        block_size: int = 30,
     ) -> None:
         super().__init__(num_heads, d_model)
         self.stride = stride
