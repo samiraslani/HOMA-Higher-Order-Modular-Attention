@@ -241,8 +241,7 @@ class ProteinTransformer(nn.Module):
         if attn_type == "linformer2d":
             return mask.unsqueeze(1).unsqueeze(3)                  # (B, 1, L, 1)
 
-        if attn_type in ("blockwise2d", "homa"):
-            # Produce block-shaped mask: (B, Blk, L_b)
+        if attn_type == "blockwise2d":
             block_size = self.attn_cfg.block_size
             stride = self.attn_cfg.stride
             B, L = input_ids.shape
@@ -253,7 +252,21 @@ class ProteinTransformer(nn.Module):
                 stride * mask.stride(1),
                 mask.stride(1),
             )
-            return mask.as_strided(shape, strides_).contiguous()  # (B, Blk, L_b)
+            block_mask = mask.as_strided(shape, strides_).contiguous()  # (B, Blk, L_b)
+            return block_mask.unsqueeze(2).unsqueeze(4)                  # (B, Blk, 1, L_b, 1)
+
+        if attn_type == "homa":
+            block_size = self.attn_cfg.block_size
+            stride = self.attn_cfg.stride
+            B, L = input_ids.shape
+            num_blocks = (L - block_size) // stride + 1
+            shape = (B, num_blocks, block_size)
+            strides_ = (
+                mask.stride(0),
+                stride * mask.stride(1),
+                mask.stride(1),
+            )
+            return mask.as_strided(shape, strides_).contiguous()         # (B, Blk, L_b)
 
         # Fallback: standard 2D mask
         return mask.unsqueeze(1).unsqueeze(1)
