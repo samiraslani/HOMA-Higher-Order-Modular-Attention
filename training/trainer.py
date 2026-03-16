@@ -90,6 +90,7 @@ class Trainer:
         """
         model = model.to(self.device)
         optimizer = optim.Adam(model.parameters(), lr=self.config.learning_rate)
+
         start_epoch = 0
         history: Dict[str, List] = {
             "train_loss": [],
@@ -116,9 +117,27 @@ class Trainer:
             start_epoch = ckpt.get("epoch", -1) + 1
             history = ckpt.get("history", history)
 
+        # --- Training summary (printed once) ---
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
         logger.info("Total trainable parameters: %d", total_params)
-        print(f"\nTotal trainable parameters: {total_params:,}\n")
+
+        sep = "-" * 50
+        print(f"\n{sep}")
+        print("  Training Setup")
+        print(sep)
+        if hasattr(model, "attn_cfg"):
+            print(f"  Attention type    : {model.attn_cfg.type}")
+            print(f"  Rank              : {model.attn_cfg.rank_3d}")
+        print(f"  Device            : {self.device}")
+        print(f"  Epochs            : {self.config.epochs}")
+        print(f"  Trainable params  : {total_params:,}")
+        if frozen_params > 0:
+            frozen_names = [n for n, p in model.named_parameters() if not p.requires_grad]
+            frozen_roots = sorted({n.rsplit(".", 1)[0] for n in frozen_names})
+            print(f"  Frozen params     : {frozen_params:,}")
+            print(f"  Frozen modules    : {', '.join(frozen_roots)}")
+        print(f"{sep}\n")
 
         tracker = (
             EfficiencyTracker(

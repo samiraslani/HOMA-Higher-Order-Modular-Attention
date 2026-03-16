@@ -1,5 +1,9 @@
 """
-Main contribution: HOMA — Higher-Order MultiHead Attention with low-rank L-matrix.
+3D attention modules: HOMA and MultiHeadAttn3D (blockwise3d).
+
+HOMA is the primary contribution (2D + 3D fusion).
+MultiHeadAttn3D is a triadic-only blockwise attention with windowed (j, k)
+interactions and a low-rank L-matrix — no 2D branch, no fusion MLP.
 
 ``HOMA`` is the primary novel mechanism introduced in
 this work.  It extends standard 2D multi-head attention with a *third-order
@@ -135,12 +139,14 @@ class HOMA(AttentionBase):
                     "load_from_pretrained_2d=True"
                 )
             self.load_pretrained_2d(pretrained_2d_ckpt, prefix_hint)
+            print(f"  Transfer learning : blockwise 2D parameters (W_q, W_k, W_v) loaded from: {pretrained_2d_ckpt}")
 
         if freeze_2d:
             for layer in (self.W_q, self.W_k, self.W_v):
                 for p in layer.parameters():
                     p.requires_grad_(False)
             logger.info("Froze pretrained W_q, W_k, W_v")
+            print("  Frozen layers     : W_q, W_k, W_v  (only W_l_u, W_l_v, fusion_layer will be trained)")
 
     # ------------------------------------------------------------------
     # Pretrained weight loading
@@ -314,5 +320,203 @@ class HOMA(AttentionBase):
         out = self.fusion_layer(combined).view(B2, Blk, L_b, self.d_model)
 
         # Reconstruct full sequence by averaging overlapping block outputs
+        out_full = self._reconstruct_from_blocks(out, L, self.stride)
+        return self.W_o(out_full)
+
+
+class MultiHeadAttn3D(AttentionBase):
+    """Triadic-only blockwise attention with windowed (j, k) interactions.
+
+    Unlike HOMA there is no 2D branch and no fusion MLP — this module computes
+    only the 3D triadic interaction with a low-rank L-matrix and local windows.
+
+    Input sequence ``(B, L, d_model)`` is split into overlapping blocks of
+    length ``block_size`` (step ``stride``).  Within each block, for every
+    query position ``i``, attention is restricted to a local window of size
+    ``window_size`` for both the ``j`` (key) and ``k`` (L-matrix) indices:
+
+    .. math::
+
+        \\text{scores}[i,j,k] = \\frac{(Q_i \\odot K_{j}^{(w)} \\odot L_{k}^{(w)}) \\cdot \\mathbf{1}}{\\sqrt{d_h}},
+        \\quad j, k \\in [0, w)
+
+    The per-block cost is ``O(L_b · w²)`` and the L-matrix is factored as
+    ``L = x W_{l_u} W_{l_v}`` (rank ``rank``), keeping parameter count low.
+
+    Args:
+        num_heads: Number of parallel attention heads.
+        d_model: Model / embedding dimension.
+        block_size: Number of tokens per sliding block (``L_b``).
+        stride: Step between consecutive block start positions.
+        window_size: Local context window size ``w`` (must be odd).
+        rank: Inner rank of the low-rank L-matrix decomposition.
+    """
+
+    def __init__(
+        self,
+        num_heads: int,
+        d_model: int,
+        block_size: int = 30,
+        stride: int = 15,
+        window_size: int = 7,
+        rank: int = 8,
+    ) -> None:
+        super().__init__(num_heads, d_model)
+
+        if window_size % 2 == 0:
+            raise ValueError("window_size must be odd so that the local window is centred")
+
+        self.block_size = block_size
+        self.stride = stride
+        self.window_size = window_size
+        self.rank = rank
+
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
+
+        # Low-rank L-matrix:  L = x W_{l_u} W_{l_v}
+        self.W_l_u = nn.Linear(d_model, rank, bias=False)
+        self.W_l_v = nn.Linear(rank, d_model, bias=False)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _split_heads_blocks(self, x: torch.Tensor) -> torch.Tensor:
+        """Reshape ``(B, Blk, L_b, D)`` → ``(B, Blk, H, L_b, head_dim)``."""
+        B, Blk, L_b, _ = x.shape
+        return (
+            x.view(B, Blk, L_b, self.num_heads, self.head_dim)
+            .transpose(2, 3)
+        )
+
+    @staticmethod
+    def _replicate_pad(x: torch.Tensor, pad: int) -> torch.Tensor:
+        """Replicate-pad along the token dimension (dim 3).
+
+        Args:
+            x: ``(B, Blk, H, L_b, D)``
+            pad: Positions to pad on each side.
+
+        Returns:
+            ``(B, Blk, H, L_b + 2·pad, D)``
+        """
+        left = x[:, :, :, :1, :].expand(-1, -1, -1, pad, -1)
+        right = x[:, :, :, -1:, :].expand(-1, -1, -1, pad, -1)
+        return torch.cat([left, x, right], dim=3)
+
+    def _build_window_mask(self, mask_blocks: torch.Tensor) -> torch.Tensor:
+        """Build a 3D window mask from block-level padding indicators.
+
+        Args:
+            mask_blocks: ``(B, Blk, L_b)`` — 1 for valid tokens, 0 for padding.
+
+        Returns:
+            ``(B, Blk, 1, L_b, w, w)``
+        """
+        pad = self.window_size // 2
+        left = mask_blocks[:, :, :1].expand(-1, -1, pad)
+        right = mask_blocks[:, :, -1:].expand(-1, -1, pad)
+        mask_pad = torch.cat([left, mask_blocks, right], dim=2)
+
+        mask_local = mask_pad.unfold(dimension=2, size=self.window_size, step=1)  # (B, Blk, L_b, w)
+
+        mask_center = mask_blocks.unsqueeze(-1).unsqueeze(-1)   # (B, Blk, L_b, 1, 1)
+        mask_j = mask_local.unsqueeze(-1)                       # (B, Blk, L_b, w, 1)
+        mask_k = mask_local.unsqueeze(-2)                       # (B, Blk, L_b, 1, w)
+
+        mask_window = mask_center * mask_j * mask_k             # (B, Blk, L_b, w, w)
+        return mask_window.unsqueeze(2)                         # (B, Blk, 1, L_b, w, w)
+
+    def _triadic_attention(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        l: torch.Tensor,
+        v: torch.Tensor,
+        mask_blocks: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Windowed triadic self-attention.
+
+        Args:
+            q, k, l, v: ``(B, Blk, H, L_b, head_dim)``
+            mask_blocks: ``(B, Blk, L_b)`` or ``None``
+
+        Returns:
+            ``(B, Blk, H, L_b, head_dim)``
+        """
+        pad = self.window_size // 2
+        w = self.window_size
+        scale = self.head_dim ** 0.5
+
+        k_pad = self._replicate_pad(k, pad)
+        l_pad = self._replicate_pad(l, pad)
+        v_pad = self._replicate_pad(v, pad)
+
+        # (B, Blk, H, L_b, w, head_dim)
+        def _unfold(t):
+            return t.unfold(dimension=3, size=w, step=1).permute(0, 1, 2, 3, 5, 4).contiguous()
+
+        k_local = _unfold(k_pad)
+        l_local = _unfold(l_pad)
+        v_local = _unfold(v_pad)
+
+        # scores: (B, Blk, H, L_b, w, w)
+        scores = torch.einsum(
+            "bphid,bphijd,bphikd->bphijk",
+            q, k_local, l_local
+        ) / scale
+
+        if mask_blocks is not None:
+            mask_window = self._build_window_mask(mask_blocks).to(scores.device)
+            scores = scores.masked_fill(mask_window == 0, -1e9)
+
+        attn = softmax_nd(scores, dim=(-2, -1))                 # (B, Blk, H, L_b, w, w)
+
+        # Outer-product value interaction: (B, Blk, H, L_b, w, w, head_dim)
+        v_paired = torch.einsum("bphijd,bphikd->bphijkd", v_local, v_local)
+
+        # Aggregate: (B, Blk, H, L_b, head_dim)
+        return torch.einsum("bphijk,bphijkd->bphid", attn, v_paired)
+
+    # ------------------------------------------------------------------
+    # Forward pass
+    # ------------------------------------------------------------------
+
+    def forward(
+        self, x: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """Compute blockwise 3D attention.
+
+        Args:
+            x: Input sequence ``(B, L, d_model)``.
+            mask: Optional ``(B, Blk, L_b)`` block-level mask from
+                ``_generate_mask``; 1 = valid, 0 = padding.
+
+        Returns:
+            Output sequence ``(B, L, d_model)``.
+        """
+        B, L, _ = x.shape
+
+        l_mat = self.W_l_v(self.W_l_u(x))  # low-rank L projection
+
+        def _to_blocks_heads(t):
+            return self._split_heads_blocks(
+                self._sliding_blocks(t, self.block_size, self.stride)
+            )
+
+        Q = _to_blocks_heads(self.W_q(x))
+        K = _to_blocks_heads(self.W_k(x))
+        L_m = _to_blocks_heads(l_mat)
+        V = _to_blocks_heads(self.W_v(x))
+
+        out = self._triadic_attention(Q, K, L_m, V, mask_blocks=mask)
+
+        # (B, Blk, H, L_b, Dh) → (B, Blk, L_b, D)
+        B2, Blk, H, L_b, Dh = out.shape
+        out = out.transpose(2, 3).contiguous().view(B2, Blk, L_b, self.d_model)
+
         out_full = self._reconstruct_from_blocks(out, L, self.stride)
         return self.W_o(out_full)
