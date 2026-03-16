@@ -169,6 +169,9 @@ class ProteinTransformer(nn.Module):
         self._effective_len_seq = len_seq
         self._is_sliding = is_sliding
 
+        # --- resolve pretrained checkpoint (explicit arg overrides attn_cfg) ---
+        resolved_ckpt = pretrained_2d_ckpt or attn_cfg.pretrained_ckpt
+
         # --- build common attn_kwargs dict ---
         attn_kwargs = dict(
             len_seq=len_seq,
@@ -177,8 +180,8 @@ class ProteinTransformer(nn.Module):
             linformer_k=attn_cfg.linformer_k,
             window_size=attn_cfg.window_size,
             rank=attn_cfg.rank_3d,
-            load_from_pretrained_2d=(pretrained_2d_ckpt is not None),
-            pretrained_2d_ckpt=pretrained_2d_ckpt,
+            load_from_pretrained_2d=(resolved_ckpt is not None),
+            pretrained_2d_ckpt=resolved_ckpt,
             freeze_2d=attn_cfg.freeze_2d,
         )
 
