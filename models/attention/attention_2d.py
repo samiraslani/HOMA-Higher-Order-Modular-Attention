@@ -142,8 +142,11 @@ class Attn2DBlockwise(AttentionBase):
         Returns:
             ``(B, Blk, H, L_b, head_dim)``
         """
+        print(f"[_block_attention] q: {q.shape}, k: {k.shape}, v: {v.shape}")
         scores = torch.matmul(q, k.transpose(-2, -1)) / (self.head_dim ** 0.5)
+        print(f"[_block_attention] scores: {scores.shape}")
         if mask is not None:
+            print(f"[_block_attention] mask: {mask.shape}")
             scores = scores.masked_fill(mask == 0, -1e9)
         attn = torch.softmax(scores, dim=-1)
         return torch.matmul(attn, v)
@@ -160,16 +163,17 @@ class Attn2DBlockwise(AttentionBase):
             ``(B, L, d_model)``
         """
         B, L, _ = x.shape
+        print(f"[Attn2DBlockwise.forward] x: {x.shape}, mask: {mask.shape if mask is not None else None}")
 
-        Q = self._split_heads_blocks(
-            self._sliding_blocks(self.W_q(x), self.block_size, self.stride)
-        )
-        K = self._split_heads_blocks(
-            self._sliding_blocks(self.W_k(x), self.block_size, self.stride)
-        )
-        V = self._split_heads_blocks(
-            self._sliding_blocks(self.W_v(x), self.block_size, self.stride)
-        )
+        q_raw = self._sliding_blocks(self.W_q(x), self.block_size, self.stride)
+        k_raw = self._sliding_blocks(self.W_k(x), self.block_size, self.stride)
+        v_raw = self._sliding_blocks(self.W_v(x), self.block_size, self.stride)
+        print(f"[Attn2DBlockwise.forward] blocks (B,Blk,L_b,D): {q_raw.shape}")
+
+        Q = self._split_heads_blocks(q_raw)
+        K = self._split_heads_blocks(k_raw)
+        V = self._split_heads_blocks(v_raw)
+        print(f"[Attn2DBlockwise.forward] Q/K/V (B,Blk,H,L_b,Dh): {Q.shape}")
 
         out_blocks = self._block_attention(Q, K, V, mask)
 
