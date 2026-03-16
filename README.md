@@ -280,7 +280,7 @@ At the start of every training run the trainer prints a one-time setup summary s
 --------------------------------------------------
 ```
 
-**With transfer learning** (`pretrained_ckpt` is set), the model first reports which checkpoint was used to initialise the 2D projection weights:
+**With transfer learning** (`pretrained_ckpt` is set), the model first reports which checkpoint was used to initialize the 2D projection weights:
 
 ```
   Transfer learning : blockwise 2D parameters (W_q, W_k, W_v) loaded from: checkpoints/blockwise2d.pt
