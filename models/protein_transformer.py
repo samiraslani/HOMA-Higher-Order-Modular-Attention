@@ -140,8 +140,6 @@ class ProteinTransformer(nn.Module):
         model_cfg: Architecture hyperparameters.
         attn_cfg: Attention type and its parameters.
         head: Task head module (``PerResidueHead`` or ``GlobalRegressionHead``).
-        pretrained_2d_ckpt: Optional checkpoint forwarded to encoder layers for
-            2D weight loading (``homa`` only).
         load_ffn_pretrained: Load FFN weights from checkpoint as well.
         freeze_ffn: Freeze FFN weights after loading.
     """
@@ -151,7 +149,6 @@ class ProteinTransformer(nn.Module):
         model_cfg: ModelConfig,
         attn_cfg: AttentionConfig,
         head: nn.Module,
-        pretrained_2d_ckpt: Optional[str] = None,
         load_ffn_pretrained: bool = False,
         freeze_ffn: bool = False,
     ) -> None:
@@ -192,7 +189,6 @@ class ProteinTransformer(nn.Module):
                 num_heads=model_cfg.num_heads,
                 d_ff=model_cfg.dim_feedforward,
                 dropout=model_cfg.dropout,
-                pretrained_2d_ckpt=pretrained_2d_ckpt,
                 load_ffn_pretrained=load_ffn_pretrained,
                 freeze_ffn=freeze_ffn,
                 **attn_kwargs,
