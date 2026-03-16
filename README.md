@@ -228,11 +228,10 @@ print(logits.shape)                        # (2, 128, 3)
 
 ## Configuration
 
-All hyperparameters are defined as Python dataclasses in `config.py`. The three dataclasses are:
-
-- **`ModelConfig`** — architecture settings: `vocab_size`, `d_model`, `num_layers`, `num_heads`, `dim_feedforward`, `dropout`, `max_seq_length`
-- **`AttentionConfig`** — attention type and its parameters: `type`, `block_size`, `stride`, `window_size`, `rank_3d`, `linformer_k`, `pretrained_ckpt`, `freeze_2d`
-- **`TrainingConfig`** — optimisation settings: `batch_size`, `learning_rate`, `epochs`, `warmup_steps`, `checkpoint_dir`, `num_workers`, `device`
+All hyperparameters are defined as Python dataclasses in `config.py`. The three dataclasses are: 
+- **`ModelConfig`** 
+- **`AttentionConfig`** 
+- **`TrainingConfig`** 
 
 See `config.py` for full defaults and parameter documentation.
 
