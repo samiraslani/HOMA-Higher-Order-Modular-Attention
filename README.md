@@ -67,22 +67,46 @@ HOMA-Higher-Order-Modular-Attention
 
 ## Installation
 
-**Requirements:** Python ≥ 3.8, PyTorch ≥ 1.13
+Requirements:
+- Python >= 3.8
+- PyTorch >= 1.13
 
 ```bash
 git clone https://github.com/samiraslani/HOMA-Higher-Order-Modular-Attention.git
-cd /content/HOMA-Higher-Order-Modular-Attention
+cd HOMA-Higher-Order-Modular-Attention
 pip install -e .
+pip install tape_proteins
 
 ```
+## Dataset setup
 
-TAPE datasets and tokenizer are provided by the `tape_proteins` package:
+This repository does not include the benchmark datasets. TAPE datasets and tokenizer are provided by the `tape_proteins` package:
 
 ```bash
 pip install tape_proteins
 ```
 
-Download the benchmark data following the [TAPE instructions](https://github.com/songlab-cal/tape#datasets).
+Download the benchmark data following the [TAPE instructions](https://github.com/songlab-cal/tape#datasets). After downloading the datasets, place the LMDB files under the data/ directory using the following structure:
+
+data/
+  secondary_structure/
+    train.lmdb
+    valid.lmdb
+    cb513.lmdb
+    casp12.lmdb
+    ts115.lmdb
+  fluorescence/
+    train.lmdb
+    valid.lmdb
+    test.lmdb
+  stability/
+    train.lmdb
+    valid.lmdb
+    test.lmdb
+
+If your datasets are stored elsewhere, update the dataset paths in the training scripts accordingly.
+
+**Note**: Training and evaluation scripts will raise a FileNotFoundError if the expected LMDB files are not present at the paths above.
 
 ---
 
@@ -94,12 +118,12 @@ Download the benchmark data following the [TAPE instructions](https://github.com
 from tape.datasets import LMDBDataset
 from tape.tokenizers import TAPETokenizer
 
-from tape_biotransformer.config import ModelConfig, AttentionConfig, TrainingConfig
-from tape_biotransformer.tasks.secondary_structure import SecondaryStructureTask
+from config import ModelConfig, AttentionConfig, TrainingConfig
+from tasks.secondary_structure import SecondaryStructureTask
 
 model_cfg = ModelConfig(d_model=512, num_layers=12, num_heads=8)
-attn_cfg  = AttentionConfig(type="homa", block_size=40, stride=15, window_size=7)
-train_cfg = TrainingConfig(batch_size=16, learning_rate=1e-4, epochs=20)
+attn_cfg  = AttentionConfig(type="homa", block_size=30, stride=15, window_size=3)
+train_cfg = TrainingConfig(batch_size=16, learning_rate=1e-4, epochs=10)
 
 tokenizer = TAPETokenizer(vocab="iupac")
 task = SecondaryStructureTask(model_cfg, attn_cfg, train_cfg)
@@ -108,7 +132,7 @@ model, history = task.train(
     train_lmdb=LMDBDataset("data/secondary_structure/train.lmdb"),
     val_lmdb=LMDBDataset("data/secondary_structure/valid.lmdb"),
     tokenizer=tokenizer,
-    track_efficiency=True,
+    track_efficiency=True
 )
 ```
 
