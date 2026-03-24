@@ -37,11 +37,23 @@ class Trainer:
         config: Training hyperparameters.
         attn_name: Short name used for checkpoint file naming (e.g. the
             attention type string such as ``"homa"``).
+        select_by: Which validation signal determines the best checkpoint.
+            ``"val_loss"`` minimises validation loss (used for SS3);
+            ``"val_metric"`` maximises the primary task metric, i.e. Spearman ρ
+            (used for fluorescence and stability).
     """
 
-    def __init__(self, config: TrainingConfig, attn_name: str = "model") -> None:
+    def __init__(
+        self,
+        config: TrainingConfig,
+        attn_name: str = "model",
+        select_by: str = "val_loss",
+    ) -> None:
+        if select_by not in ("val_loss", "val_metric"):
+            raise ValueError("select_by must be 'val_loss' or 'val_metric'")
         self.config = config
         self.attn_name = attn_name
+        self.select_by = select_by
         self.device = torch.device(
             config.device
             if config.device
@@ -49,6 +61,9 @@ class Trainer:
         )
         self._checkpoint_path = os.path.join(
             config.checkpoint_dir, f"{attn_name}.pt"
+        )
+        self._best_checkpoint_path = os.path.join(
+            config.checkpoint_dir, f"{attn_name}_best.pt"
         )
 
     # ------------------------------------------------------------------
@@ -131,6 +146,7 @@ class Trainer:
             print(f"  Rank              : {model.attn_cfg.rank_3d}")
         print(f"  Device            : {self.device}")
         print(f"  Epochs            : {self.config.epochs}")
+        print(f"  Best-model by     : {self.select_by}")
         print(f"  Trainable params  : {total_params:,}")
         if frozen_params > 0:
             frozen_names = [n for n, p in model.named_parameters() if not p.requires_grad]
@@ -138,6 +154,12 @@ class Trainer:
             print(f"  Frozen params     : {frozen_params:,}")
             print(f"  Frozen modules    : {', '.join(frozen_roots)}")
         print(f"{sep}\n")
+
+        # Initialise best-model tracking.
+        # val_loss is minimised; val_metric is maximised.
+        best_val_loss = float("inf")
+        best_val_metric = -float("inf")
+        best_epoch = -1
 
         tracker = (
             EfficiencyTracker(
@@ -161,19 +183,46 @@ class Trainer:
             history["val_loss"].append(val_loss)
             history["val_metric"].append(val_metric)
 
+            # --- best-model check ---
+            is_best = (
+                val_loss < best_val_loss
+                if self.select_by == "val_loss"
+                else val_metric > best_val_metric
+            )
+            if is_best:
+                best_val_loss = val_loss
+                best_val_metric = val_metric
+                best_epoch = epoch
+                save_checkpoint(
+                    self._best_checkpoint_path,
+                    model,
+                    optimizer,
+                    epoch,
+                    extra={
+                        "history": history,
+                        "val_loss": val_loss,
+                        "val_metric": val_metric,
+                    },
+                )
+                logger.info("New best model saved at epoch %d.", epoch + 1)
+
             if tracker is not None:
                 eff = tracker.end_epoch()
                 for k, v in eff.items():
                     history[k].append(v)
-                self._log_efficiency(epoch, train_loss, val_loss, val_metric, eff)
+                self._log_efficiency(epoch, train_loss, val_loss, val_metric, eff,
+                                     is_best=is_best)
             else:
+                best_marker = "  ← best" if is_best else ""
                 print(
                     f"Epoch {epoch + 1}/{self.config.epochs} | "
                     f"Train loss {train_loss:.4f} | "
                     f"Val loss {val_loss:.4f} | "
                     f"Val metric {val_metric:.4f}"
+                    f"{best_marker}"
                 )
 
+            # Rolling checkpoint (for resume)
             save_checkpoint(
                 self._checkpoint_path,
                 model,
@@ -182,6 +231,20 @@ class Trainer:
                 extra={"history": history},
             )
 
+        # Load the best weights back before returning.
+        if os.path.exists(self._best_checkpoint_path):
+            best_ckpt = torch.load(
+                self._best_checkpoint_path,
+                map_location=str(self.device),
+                weights_only=False,
+            )
+            model.load_state_dict(best_ckpt["model_state_dict"])
+            print(
+                f"\nLoaded best model from epoch {best_epoch + 1} "
+                f"(val_loss={best_val_loss:.4f}, val_metric={best_val_metric:.4f})"
+            )
+
+        history["best_epoch"] = best_epoch
         return model, history
 
     # ------------------------------------------------------------------
@@ -285,11 +348,13 @@ class Trainer:
         val_loss: float,
         val_metric: float,
         eff: Dict[str, float],
+        is_best: bool = False,
     ) -> None:
+        best_marker = "  ← best" if is_best else ""
         print(
             f"Epoch {epoch + 1} | "
             f"Train loss {train_loss:.4f} | Val loss {val_loss:.4f} | "
-            f"Val metric {val_metric:.4f}\n"
+            f"Val metric {val_metric:.4f}{best_marker}\n"
             f"  End-to-end: {eff['avg_step_ms_e2e']:.2f} ms/step | "
             f"{eff['tokens_per_sec_e2e']:,.0f} tok/s\n"
             f"  Compute:    {eff['avg_step_ms_compute']:.2f} ms/step | "

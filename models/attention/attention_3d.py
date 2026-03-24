@@ -510,7 +510,8 @@ class MultiHeadAttn3D(AttentionBase):
         L_m = _to_blocks_heads(l_mat)
         V = _to_blocks_heads(self.W_v(x))
 
-        out = self._triadic_attention(Q, K, L_m, V, mask_blocks=mask)
+        mask_blocks = mask.float() if mask is not None else None
+        out = self._triadic_attention(Q, K, L_m, V, mask_blocks=mask_blocks)
 
         # (B, Blk, H, L_b, Dh) → (B, Blk, L_b, D)
         B2, Blk, H, L_b, Dh = out.shape

@@ -94,6 +94,7 @@ class StabilityTask:
         trainer = Trainer(
             config=self.train_cfg,
             attn_name=f"stability_{self.attn_cfg.type}",
+            select_by="val_metric",
         )
         return trainer.fit(
             model=model,

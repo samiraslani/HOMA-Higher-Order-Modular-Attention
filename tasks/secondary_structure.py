@@ -98,6 +98,7 @@ class SecondaryStructureTask:
         trainer = Trainer(
             config=self.train_cfg,
             attn_name=self.attn_cfg.type,
+            select_by="val_loss",
         )
         return trainer.fit(
             model=model,

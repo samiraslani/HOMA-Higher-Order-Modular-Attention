@@ -124,7 +124,7 @@ class ProteinTransformer(nn.Module):
 
     - ``plain2d``    → ``(B, 1, 1, L)``
     - ``linformer2d`` → ``(B, 1, L, 1)``
-    - ``blockwise2d`` / ``homa`` → ``(B, Blk, L_b)``
+    - ``blockwise2d`` / ``homa`` / ``blockwise3d`` → ``(B, Blk, L_b)``
 
     Sequence alignment for sliding-window types
     --------------------------------------------

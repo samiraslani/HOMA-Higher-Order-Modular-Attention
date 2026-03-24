@@ -37,6 +37,8 @@ Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated
 - [Configuration](#configuration)
 - [Running the examples](#running-the-examples)
 - [Training output](#training-output)
+- [Best-model selection](#best-model-selection)
+- [Multi-seed experiments](#multi-seed-experiments)
 - [Checkpointing](#checkpointing)
 - [Efficiency tracking](#efficiency-tracking)
 - [Citation](#citation)
@@ -78,7 +80,8 @@ HOMA-Higher-Order-Modular-Attention
 └── examples/
     ├── train_secondary_structure.py
     ├── train_fluorescence.py
-    └── train_stability.py
+    ├── train_stability.py
+    └── run_multiseed.py              # Multi-seed experiment runner
 ```
 
 ---
@@ -313,10 +316,104 @@ At the start of every training run the trainer prints a one-time setup summary s
 --------------------------------------------------
 ```
 
-Each epoch then prints a one-line progress update:
+Each epoch then prints a one-line progress update, with the best epoch flagged:
 
 ```
 Epoch 1/20 | Train loss 1.2340 | Val loss 1.1890 | Val metric 0.6123
+Epoch 2/20 | Train loss 1.1050 | Val loss 1.0741 | Val metric 0.6389  ← best
+```
+
+---
+
+## Best-model selection
+
+During training the `Trainer` tracks the best checkpoint according to a configurable criterion and automatically restores those weights before returning the model.
+
+| Task | Criterion | Rationale |
+|---|---|---|
+| Secondary structure | Lowest **validation loss** | Per-residue cross-entropy loss correlates directly with per-residue accuracy; selecting by loss avoids overfitting to spurious accuracy gains. |
+| Fluorescence | Highest **validation Spearman ρ** | The evaluation metric is rank correlation, so the model with the best held-out ρ generalises best. |
+| Stability | Highest **validation Spearman ρ** | Same reasoning as fluorescence. |
+
+Two checkpoint files are written per run:
+
+| File | Contents |
+|---|---|
+| `{attn_name}.pt` | Rolling last-epoch checkpoint (used for resuming interrupted runs). |
+| `{attn_name}_best.pt` | Snapshot of the best epoch according to `select_by`. |
+
+At the end of `Trainer.fit()` the best weights are loaded back into the model before it is returned, so downstream evaluation always uses the best checkpoint — not the final epoch.
+
+```python
+# select_by is set automatically by each task wrapper, but can be overridden:
+from training.trainer import Trainer
+
+trainer = Trainer(config=train_cfg, attn_name="homa", select_by="val_loss")   # SS3
+trainer = Trainer(config=train_cfg, attn_name="homa", select_by="val_metric") # fluorescence / stability
+```
+
+---
+
+## Multi-seed experiments
+
+`examples/run_multiseed.py` trains every requested `(task, attention)` combination across multiple random seeds, evaluates each on the appropriate test set(s), and reports the mean and standard deviation of the primary metric across seeds.
+
+### Usage
+
+```bash
+python examples/run_multiseed.py \
+    --task secondary_structure fluorescence \
+    --attention plain2d blockwise2d blockwise3d homa \
+    --seeds 42 123 456 \
+    --ss3_data_dir  /path/to/tape/secondary_structure \
+    --fl_data_dir   /path/to/tape/fluorescence \
+    --checkpoint_dir checkpoints_multiseed \
+    --epochs 20
+```
+
+### Key arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--task` | *(required)* | One or more of `secondary_structure`, `fluorescence`, `stability`. |
+| `--attention` | *(required)* | One or more of `plain2d`, `blockwise2d`, `linformer2d`, `blockwise3d`, `homa`. |
+| `--seeds` | `42 123 456` | Random seeds; one independent training run is executed per seed. |
+| `--ss3_data_dir` | `None` | Path to the secondary-structure LMDB directory (required if SS3 is in `--task`). |
+| `--fl_data_dir` | `None` | Path to the fluorescence LMDB directory (required if fluorescence is in `--task`). |
+| `--stab_data_dir` | `None` | Path to the stability LMDB directory (required if stability is in `--task`). |
+| `--checkpoint_dir` | `checkpoints_multiseed` | Root directory; each run is saved under `{task}/{attn_type}/seed{seed}/`. |
+| `--epochs` | `20` | Training epochs per run. |
+
+Model and attention hyperparameters (`--d_model`, `--num_layers`, `--block_size`, etc.) follow the same defaults as the single-run training scripts; see `python examples/run_multiseed.py --help` for the full list.
+
+### Test sets evaluated
+
+| Task | Test splits |
+|---|---|
+| Secondary structure | `cb513`, `casp12`, `ts115` (three held-out TAPE benchmarks) |
+| Fluorescence | `test` |
+| Stability | `test` |
+
+### Output
+
+After all runs complete, a summary table is printed for every `(task, attention)` combination:
+
+```
+############################################################
+  MULTI-SEED RESULTS SUMMARY
+############################################################
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TASK: SECONDARY_STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ──────────────────────────────────────────────────────
+  Task: secondary_structure  |  Attention: homa  |  Seeds: 3
+  ──────────────────────────────────────────────────────
+  [ cb513]  mean=0.7823  std=0.0041   per-seed: 0.7794  0.7831  0.7843
+  [casp12]  mean=0.7601  std=0.0028   per-seed: 0.7571  0.7614  0.7618
+  [ ts115]  mean=0.7912  std=0.0035   per-seed: 0.7878  0.7921  0.7937
+  ──────────────────────────────────────────────────────
 ```
 
 ---
