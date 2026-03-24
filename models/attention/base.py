@@ -137,7 +137,7 @@ class AttentionBase(nn.Module, ABC):
             flat_pos.unsqueeze(-1),
             torch.ones(B, flat_pos.shape[1], 1, device=device),
         )
-        return out / counts
+        return out / counts.clamp_min(1.0)
 
 
 def softmax_nd(x: torch.Tensor, dim) -> torch.Tensor:
