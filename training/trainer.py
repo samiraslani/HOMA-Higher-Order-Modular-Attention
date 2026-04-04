@@ -144,6 +144,7 @@ class Trainer:
         if hasattr(model, "attn_cfg"):
             print(f"  Attention type    : {model.attn_cfg.type}")
             print(f"  Rank              : {model.attn_cfg.rank_3d}")
+            print(f"  Window size       : {model.attn_cfg.window_size}")
         print(f"  Device            : {self.device}")
         print(f"  Epochs            : {self.config.epochs}")
         print(f"  Best-model by     : {self.select_by}")
