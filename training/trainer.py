@@ -48,12 +48,14 @@ class Trainer:
         config: TrainingConfig,
         attn_name: str = "model",
         select_by: str = "val_loss",
+        metric_label: str = "metric",
     ) -> None:
         if select_by not in ("val_loss", "val_metric"):
             raise ValueError("select_by must be 'val_loss' or 'val_metric'")
         self.config = config
         self.attn_name = attn_name
         self.select_by = select_by
+        self.metric_label = metric_label
         self.device = torch.device(
             config.device
             if config.device
@@ -109,6 +111,7 @@ class Trainer:
         start_epoch = 0
         history: Dict[str, List] = {
             "train_loss": [],
+            "train_metric": [],
             "val_loss": [],
             "val_metric": [],
         }
@@ -173,15 +176,16 @@ class Trainer:
         )
 
         for epoch in range(start_epoch, self.config.epochs):
-            train_loss = self._train_epoch(
+            train_loss, train_metric = self._train_epoch(
                 model, train_loader, optimizer, criterion,
-                is_classification, tracker
+                is_classification, tracker, metric_fn
             )
             val_loss, val_metric = self._validate(
                 model, val_loader, criterion, metric_fn, is_classification
             )
 
             history["train_loss"].append(train_loss)
+            history["train_metric"].append(train_metric)
             history["val_loss"].append(val_loss)
             history["val_metric"].append(val_metric)
 
@@ -212,15 +216,16 @@ class Trainer:
                 eff = tracker.end_epoch()
                 for k, v in eff.items():
                     history[k].append(v)
-                self._log_efficiency(epoch, train_loss, val_loss, val_metric, eff,
+                self._log_efficiency(epoch, train_loss, train_metric, val_loss, val_metric, eff,
                                      is_best=is_best)
             else:
                 best_marker = "  ← best" if is_best else ""
                 print(
                     f"Epoch {epoch + 1}/{self.config.epochs} | "
-                    f"Train loss {train_loss:.4f} | "
-                    f"Val loss {val_loss:.4f} | "
-                    f"Val metric {val_metric:.4f}"
+                    f"Train Loss: {train_loss:.4f} | "
+                    f"Train {self.metric_label}: {train_metric:.4f} | "
+                    f"Val Loss: {val_loss:.4f} | "
+                    f"Val {self.metric_label}: {val_metric:.4f}"
                     f"{best_marker}"
                 )
 
@@ -261,9 +266,12 @@ class Trainer:
         criterion: nn.Module,
         is_classification: bool,
         tracker: Optional[EfficiencyTracker],
-    ) -> float:
+        metric_fn: Callable,
+    ) -> Tuple[float, float]:
         model.train()
         total_loss = 0.0
+        all_preds: List[torch.Tensor] = []
+        all_targets: List[torch.Tensor] = []
 
         if tracker is not None:
             tracker.start_epoch()
@@ -285,12 +293,16 @@ class Trainer:
                 optimizer.zero_grad(set_to_none=True)
                 logits, labels = model(input_ids, labels)
                 loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+                all_preds.append(logits.detach().cpu())
+                all_targets.append(labels.detach().cpu())
             else:
                 input_ids = batch["input_ids"].to(self.device)
                 targets = batch["targets"].to(self.device)
                 optimizer.zero_grad(set_to_none=True)
                 preds = model(input_ids)
                 loss = criterion(preds.squeeze(-1), targets)
+                all_preds.append(preds.detach().cpu())
+                all_targets.append(targets.detach().cpu())
 
             loss.backward()
             optimizer.step()
@@ -301,7 +313,8 @@ class Trainer:
                 n_tokens = int(input_ids.numel())
                 tracker.record_compute_end(n_tokens)
 
-        return total_loss / max(len(loader), 1)
+        train_metric = metric_fn(torch.cat(all_preds), torch.cat(all_targets))
+        return total_loss / max(len(loader), 1), train_metric
 
     @torch.no_grad()
     def _validate(
@@ -350,10 +363,11 @@ class Trainer:
 
         return avg_loss, metric
 
-    @staticmethod
     def _log_efficiency(
+        self,
         epoch: int,
         train_loss: float,
+        train_metric: float,
         val_loss: float,
         val_metric: float,
         eff: Dict[str, float],
@@ -362,8 +376,8 @@ class Trainer:
         best_marker = "  ← best" if is_best else ""
         print(
             f"Epoch {epoch + 1} | "
-            f"Train loss {train_loss:.4f} | Val loss {val_loss:.4f} | "
-            f"Val metric {val_metric:.4f}{best_marker}\n"
+            f"Train Loss: {train_loss:.4f} | Train {self.metric_label}: {train_metric:.4f} | "
+            f"Val Loss: {val_loss:.4f} | Val {self.metric_label}: {val_metric:.4f}{best_marker}\n"
             f"  End-to-end: {eff['avg_step_ms_e2e']:.2f} ms/step | "
             f"{eff['tokens_per_sec_e2e']:,.0f} tok/s\n"
             f"  Compute:    {eff['avg_step_ms_compute']:.2f} ms/step | "
