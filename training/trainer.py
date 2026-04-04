@@ -338,6 +338,13 @@ class Trainer:
 
         preds_cat = torch.cat(all_preds)
         targets_cat = torch.cat(all_targets)
+
+        # Debug: check prediction distribution
+        print(f"    [debug] preds   — min={preds_cat.min():.4f}  max={preds_cat.max():.4f}"
+              f"  std={preds_cat.std():.4f}  mean={preds_cat.mean():.4f}")
+        print(f"    [debug] targets — min={targets_cat.min():.4f}  max={targets_cat.max():.4f}"
+              f"  std={targets_cat.std():.4f}  mean={targets_cat.mean():.4f}")
+
         metric = metric_fn(preds_cat, targets_cat)
 
         return avg_loss, metric
