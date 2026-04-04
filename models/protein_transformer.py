@@ -64,19 +64,23 @@ class PerResidueHead(nn.Module):
 
 
 class GlobalRegressionHead(nn.Module):
-    """Flatten sequence positions, then regress to a scalar.
+    """Mean-pool sequence positions, then regress to a scalar.
 
     Used for global/sequence-level regression tasks such as fluorescence and
     stability prediction.
 
     Architecture::
 
-        Flatten(x)  →  Linear(len_seq * d_model, d_ff)  →  ReLU  →  Dropout
-                     →  Linear(d_ff, 1)
+        MeanPool(x)  →  Linear(d_model, d_ff)  →  ReLU  →  Dropout
+                      →  Linear(d_ff, 1)
+
+    Mean pooling over the sequence dimension keeps the first linear layer at
+    ``d_model`` inputs regardless of sequence length, which avoids the
+    initialization sensitivity of a ``len_seq * d_model``-wide linear layer.
 
     Args:
         d_model: Encoder output dimension.
-        len_seq: Effective (padded) sequence length.
+        len_seq: Unused; kept for API compatibility.
         d_ff: Hidden dimension of the regression MLP.
         dropout: Dropout probability applied inside the MLP.
     """
@@ -84,8 +88,7 @@ class GlobalRegressionHead(nn.Module):
     def __init__(self, d_model: int, len_seq: int, d_ff: int = 128, dropout: float = 0.2) -> None:
         super().__init__()
         self.regressor = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(len_seq * d_model, d_ff),
+            nn.Linear(d_model, d_ff),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, 1),
@@ -99,7 +102,8 @@ class GlobalRegressionHead(nn.Module):
         Returns:
             ``(B, 1)``
         """
-        return self.regressor(x)
+        pooled = x.mean(dim=1)   # (B, d_model)
+        return self.regressor(pooled)
 
 
 # ---------------------------------------------------------------------------
