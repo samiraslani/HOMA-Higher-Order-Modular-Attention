@@ -330,20 +330,6 @@ class ProteinTransformer(nn.Module):
         # Positional ids
         pos_ids = torch.arange(L, device=input_ids.device).unsqueeze(0).expand(B, -1)
 
-        # ── DEBUG ──────────────────────────────────────────────────────────
-        vocab_size   = self.token_embedding.num_embeddings   # expected: 30
-        pos_emb_size = self.position_embedding.num_embeddings  # expected: len_seq (512 or 525)
-        print(f"[DEBUG forward] B={B}  L={L}")
-        print(f"[DEBUG forward] token_embedding  size = {vocab_size}")
-        print(f"[DEBUG forward] input_ids        min={input_ids.min().item()}  "
-              f"max={input_ids.max().item()}  "
-              f"{'OK' if input_ids.max().item() < vocab_size else 'OUT-OF-BOUNDS !!!'}")
-        print(f"[DEBUG forward] position_embedding size = {pos_emb_size}")
-        print(f"[DEBUG forward] pos_ids           min={pos_ids.min().item()}  "
-              f"max={pos_ids.max().item()}  "
-              f"{'OK' if pos_ids.max().item() < pos_emb_size else 'OUT-OF-BOUNDS !!!'}")
-        # ── END DEBUG ───────────────────────────────────────────────────────
-
         # Embed tokens + positions
         x = self.token_embedding(input_ids) + self.position_embedding(pos_ids)
         x = self.embedding_norm(x)
