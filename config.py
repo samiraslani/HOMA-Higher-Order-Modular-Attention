@@ -29,7 +29,7 @@ class ModelConfig:
     num_heads: int = 8
     dim_feedforward: int = 1024
     dropout: float = 0.4
-    max_seq_length: int = 512
+    max_seq_length: Optional[int] = None
 
 
 @dataclass
