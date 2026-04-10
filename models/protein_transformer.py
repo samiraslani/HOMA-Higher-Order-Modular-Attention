@@ -35,6 +35,25 @@ from config import AttentionConfig, ModelConfig
 from models.encoder import Encoder, _SLIDING_ATTENTION_TYPES
 
 # ---------------------------------------------------------------------------
+# Padding utility (Minimum Safe Padding Lemma)
+# ---------------------------------------------------------------------------
+
+def min_safe_length(L_real: int, block_size: int, stride: int) -> int:
+    """Return the minimum effective padded length guaranteeing every real
+    position appears in exactly ``block_size // stride`` overlapping blocks.
+
+    From the Minimum Safe Padding Lemma:
+
+        L_eff >= stride * floor((L_real - 1) / stride) + block_size
+
+    Block k starts at k*stride and covers positions [k*stride, k*stride + block_size - 1].
+    The last real position (L_real - 1) needs block k* = floor((L_real-1)/stride)
+    to exist, which requires L_eff >= k* * stride + block_size.
+    """
+    return stride * ((L_real - 1) // stride) + block_size
+
+
+# ---------------------------------------------------------------------------
 # Task heads
 # ---------------------------------------------------------------------------
 
@@ -87,7 +106,7 @@ class GlobalRegressionHead(nn.Module):
         dropout: Dropout probability applied inside the MLP.
     """
 
-    def __init__(self, d_model: int, len_seq: int, d_ff: int = 128, dropout: float = 0.2) -> None:
+    def __init__(self, d_model: int, len_seq: int = 0, d_ff: int = 128, dropout: float = 0.2) -> None:
         super().__init__()
         self.pool_weights = nn.Linear(d_model, 1)
         self.regressor = nn.Sequential(
@@ -165,15 +184,23 @@ class ProteinTransformer(nn.Module):
         self.head = head
 
         # --- resolve effective sequence length ---
-        len_seq = model_cfg.max_seq_length
         is_sliding = attn_cfg.type.lower() in _SLIDING_ATTENTION_TYPES
-        if is_sliding:
-            remainder = (len_seq - attn_cfg.block_size) % attn_cfg.stride
-            pad_len = (attn_cfg.stride - remainder) % attn_cfg.stride
-            len_seq = len_seq + pad_len
-
-        self._effective_len_seq = len_seq
         self._is_sliding = is_sliding
+
+        if model_cfg.max_seq_length is not None:
+            # Fixed mode: user supplied an explicit maximum; use it directly.
+            self._fixed_len_seq = model_cfg.max_seq_length
+            len_seq = model_cfg.max_seq_length
+            print(f"  Padding sequences to fixed length {len_seq} (user-specified max_seq_length).")
+        else:
+            # Dynamic mode: pad each batch to the minimum safe length derived
+            # from the Minimum Safe Padding Lemma at forward time.
+            self._fixed_len_seq = None
+            # Allocate position embeddings up to a generous maximum so that
+            # any protein sequence encountered at runtime is covered.
+            len_seq = 4096
+
+        self._last_reported_target = -1  # used to avoid duplicate print messages
 
         # --- resolve pretrained checkpoint (explicit arg overrides attn_cfg) ---
         resolved_ckpt = pretrained_2d_ckpt or attn_cfg.pretrained_ckpt
@@ -227,10 +254,27 @@ class ProteinTransformer(nn.Module):
         input_ids: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Zero-pad ``input_ids`` (and ``labels``) so sliding blocks fit evenly."""
+        """Zero-pad ``input_ids`` (and ``labels``) to the target padded length.
+
+        In fixed mode (``max_seq_length`` was set), pads every batch to that
+        length.  In dynamic mode, computes the minimum safe length for the
+        current batch via the Minimum Safe Padding Lemma:
+
+            L_eff >= stride * floor((L_real - 1) / stride) + block_size
+        """
         B, L = input_ids.shape
-        remainder = (L - self.attn_cfg.block_size) % self.attn_cfg.stride
-        pad_len = (self.attn_cfg.stride - remainder) % self.attn_cfg.stride
+
+        if self._fixed_len_seq is not None:
+            target = self._fixed_len_seq
+        else:
+            target = min_safe_length(L, self.attn_cfg.block_size, self.attn_cfg.stride)
+
+        if target != self._last_reported_target:
+            print(f"  Padding sequences to length {target} "
+                  f"(L_real={L}, block_size={self.attn_cfg.block_size}, stride={self.attn_cfg.stride}).")
+            self._last_reported_target = target
+
+        pad_len = target - L
         if pad_len > 0:
             input_ids = F.pad(input_ids, (0, pad_len), value=0)
             if labels is not None:
