@@ -64,19 +64,21 @@ class PerResidueHead(nn.Module):
 
 
 class GlobalRegressionHead(nn.Module):
-    """Mean-pool sequence positions, then regress to a scalar.
+    """Weighted-pool sequence positions, then regress to a scalar.
 
-    Used for global/sequence-level regression tasks such as fluorescence and
-    stability prediction.
+    A learned scalar importance weight is computed per position via a linear
+    projection, softmax-normalised across the sequence, and used to form a
+    weighted sum of the encoder outputs.  The pooled vector is then passed
+    through a two-layer MLP.
 
     Architecture::
 
-        MeanPool(x)  →  Linear(d_model, d_ff)  →  ReLU  →  Dropout
-                      →  Linear(d_ff, 1)
+        pool_weights(x) → softmax → weighted sum  →  (B, d_model)
+          →  Linear(d_model, d_ff)  →  ReLU  →  Dropout  →  Linear(d_ff, 1)
 
-    Mean pooling over the sequence dimension keeps the first linear layer at
-    ``d_model`` inputs regardless of sequence length, which avoids the
-    initialization sensitivity of a ``len_seq * d_model``-wide linear layer.
+    This is position-aware (the model learns which positions matter most)
+    while keeping the first linear layer at ``d_model`` inputs regardless of
+    sequence length.
 
     Args:
         d_model: Encoder output dimension.
@@ -87,9 +89,9 @@ class GlobalRegressionHead(nn.Module):
 
     def __init__(self, d_model: int, len_seq: int, d_ff: int = 128, dropout: float = 0.2) -> None:
         super().__init__()
+        self.pool_weights = nn.Linear(d_model, 1)
         self.regressor = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(len_seq * d_model, d_ff),
+            nn.Linear(d_model, d_ff),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, 1),
@@ -103,7 +105,9 @@ class GlobalRegressionHead(nn.Module):
         Returns:
             ``(B, 1)``
         """
-        return self.regressor(x)
+        w = torch.softmax(self.pool_weights(x), dim=1)  # (B, L, 1)
+        pooled = (w * x).sum(dim=1)                      # (B, d_model)
+        return self.regressor(pooled)
 
 
 # ---------------------------------------------------------------------------
