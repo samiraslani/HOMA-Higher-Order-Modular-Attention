@@ -88,7 +88,8 @@ class GlobalRegressionHead(nn.Module):
     def __init__(self, d_model: int, len_seq: int, d_ff: int = 128, dropout: float = 0.2) -> None:
         super().__init__()
         self.regressor = nn.Sequential(
-            nn.Linear(d_model, d_ff),
+            nn.Flatten(),
+            nn.Linear(len_seq * d_model, d_ff),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, 1),
@@ -102,8 +103,7 @@ class GlobalRegressionHead(nn.Module):
         Returns:
             ``(B, 1)``
         """
-        pooled = x.mean(dim=1)   # (B, d_model)
-        return self.regressor(pooled)
+        return self.regressor(x)
 
 
 # ---------------------------------------------------------------------------
