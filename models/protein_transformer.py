@@ -366,9 +366,16 @@ class ProteinTransformer(nn.Module):
             * If ``labels`` is provided: ``(head_output, updated_labels)``
               tuple so the training loop can use the up-to-date labels.
         """
-        # Pad sequences for sliding-window attention
+        # Pad sequences: sliding types use the lemma; fixed max_seq_length
+        # types (e.g. linformer2d) pad to the declared fixed length.
         if self._is_sliding:
             input_ids, labels = self._pad_to_blocks(input_ids, labels)
+        elif self._fixed_len_seq is not None:
+            pad_len = self._fixed_len_seq - input_ids.shape[1]
+            if pad_len > 0:
+                input_ids = F.pad(input_ids, (0, pad_len), value=0)
+                if labels is not None:
+                    labels = F.pad(labels, (0, pad_len), value=-100)
 
         B, L = input_ids.shape
 
