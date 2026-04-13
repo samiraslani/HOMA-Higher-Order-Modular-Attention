@@ -43,9 +43,21 @@ class StabilityTask:
         self.train_cfg = train_cfg
 
     def build_model(self, pretrained_2d_ckpt=None) -> ProteinTransformer:
-        """Instantiate the transformer model with a global regression head."""
+        """Instantiate the transformer model with a global regression head.
+
+        ``model_cfg.max_seq_length`` must be set: it determines both the
+        padding length applied to every batch and the width of the classifier's
+        first linear layer (``max_seq_length * d_model``).
+        """
+        if self.model_cfg.max_seq_length is None:
+            raise ValueError(
+                "ModelConfig.max_seq_length must be set for StabilityTask. "
+                "It controls both the padding length and the classifier width."
+            )
+        len_seq = self.model_cfg.max_seq_length
         head = GlobalRegressionHead(
             d_model=self.model_cfg.d_model,
+            len_seq=len_seq,
             d_ff=self.model_cfg.dim_feedforward,
         )
         return ProteinTransformer(
