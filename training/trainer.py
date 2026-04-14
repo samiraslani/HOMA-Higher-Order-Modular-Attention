@@ -292,7 +292,10 @@ class Trainer:
                 labels = batch["labels"].to(self.device)
                 optimizer.zero_grad(set_to_none=True)
                 logits, labels = model(input_ids, labels)
-                loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+                loss = criterion(
+                    logits.reshape(-1, logits.size(-1)),
+                    labels.reshape(-1),
+                )
                 all_preds.append(logits.detach().cpu())
                 all_targets.append(labels.detach().cpu())
             else:
@@ -335,7 +338,10 @@ class Trainer:
                 input_ids = batch["input_ids"].to(self.device)
                 labels = batch["labels"].to(self.device)
                 logits, labels = model(input_ids, labels)
-                loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+                loss = criterion(
+                    logits.reshape(-1, logits.size(-1)),
+                    labels.reshape(-1),
+                )
                 all_preds.append(logits.cpu())
                 all_targets.append(labels.cpu())
             else:
