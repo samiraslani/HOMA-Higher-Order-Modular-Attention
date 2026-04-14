@@ -385,23 +385,57 @@ class ProteinTransformer(nn.Module):
 
         B, L = input_ids.shape
 
-        # Padding mask
-        masks = self._generate_mask(input_ids)
+        # # Padding mask
+        # masks = self._generate_mask(input_ids)
 
+        # # Positional ids
+        # pos_ids = torch.arange(L, device=input_ids.device).unsqueeze(0).expand(B, -1)
+
+        # # Embed tokens + positions
+        # x = self.token_embedding(input_ids) + self.position_embedding(pos_ids)
+        # x = self.embedding_norm(x)
+
+        # # Encoder layers
+        # for layer in self.encoder_layers:
+        #     x = layer(x, mask=masks)
+
+        # # Task head
+        # out = self.head(x)
+
+        # if labels is not None:
+        #     return out, labels
+        # return out
+
+        B, L = input_ids.shape
+        print(f"[INPUT] input_ids: {input_ids.shape}")
+    
         # Positional ids
         pos_ids = torch.arange(L, device=input_ids.device).unsqueeze(0).expand(B, -1)
-
-        # Embed tokens + positions
-        x = self.token_embedding(input_ids) + self.position_embedding(pos_ids)
+        print(f"[POS] pos_ids: {pos_ids.shape}")
+    
+        # Embeddings
+        tok_emb = self.token_embedding(input_ids)
+        pos_emb = self.position_embedding(pos_ids)
+        print(f"[EMBED] token_embedding: {tok_emb.shape}")
+        print(f"[EMBED] position_embedding: {pos_emb.shape}")
+    
+        x = tok_emb + pos_emb
+        print(f"[EMBED] combined: {x.shape}")
+    
         x = self.embedding_norm(x)
-
+        print(f"[NORM] after embedding_norm: {x.shape}")
+    
         # Encoder layers
-        for layer in self.encoder_layers:
+        for i, layer in enumerate(self.encoder_layers):
             x = layer(x, mask=masks)
-
+            print(f"[ENCODER {i}] output: {x.shape}")
+    
         # Task head
         out = self.head(x)
-
+        print(f"[HEAD] output: {out.shape}")
+    
         if labels is not None:
+            print(f"[LABELS] labels: {labels.shape}")
             return out, labels
+    
         return out
