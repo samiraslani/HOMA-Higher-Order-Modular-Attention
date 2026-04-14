@@ -92,7 +92,7 @@ class GlobalRegressionHead(nn.Module):
     Architecture::
 
         Flatten  →  LayerNorm(len_seq * d_model)
-                 →  Linear(len_seq * d_model, d_ff)  →  GELU  →  Dropout
+                 →  Linear(len_seq * d_model, d_ff)  →  ReLU  →  Dropout
                  →  Linear(d_ff, 1)
 
     Args:
@@ -108,7 +108,7 @@ class GlobalRegressionHead(nn.Module):
             nn.Flatten(),
             nn.LayerNorm(len_seq * d_model),
             nn.Linear(len_seq * d_model, d_ff),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, 1),
         )
