@@ -152,9 +152,10 @@ class ProteinTransformer(nn.Module):
     --------------------------------------------
     When a sliding-window attention is used, ``input_ids`` are zero-padded to
     the nearest length satisfying ``(L - block_size) % stride == 0`` before
-    any embedding lookup.  For the SS3 task the corresponding ``labels``
-    tensor is also padded with ``-100`` (the ``ignore_index`` in
-    ``CrossEntropyLoss``).
+    any embedding lookup.  If ``max_seq_length`` is set, sequences longer than
+    that limit are truncated first. For the SS3 task the corresponding
+    ``labels`` tensor is also padded with ``-100`` (the ``ignore_index`` in
+    ``CrossEntropyLoss``) or truncated to match.
 
     Args:
         model_cfg: Architecture hyperparameters.
@@ -249,7 +250,7 @@ class ProteinTransformer(nn.Module):
         input_ids: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Zero-pad ``input_ids`` (and ``labels``) to the target padded length.
+        """Truncate or zero-pad ``input_ids`` (and ``labels``) to the target length.
 
         In fixed mode (``max_seq_length`` was set), pads every batch to that
         length.  In dynamic mode, computes the minimum safe length for the
@@ -261,6 +262,11 @@ class ProteinTransformer(nn.Module):
 
         if self._fixed_len_seq is not None:
             target = self._fixed_len_seq
+            if L > target:
+                input_ids = input_ids[:, :target]
+                if labels is not None:
+                    labels = labels[:, :target]
+                L = target
         else:
             target = min_safe_length(L, self.attn_cfg.block_size, self.attn_cfg.stride)
 
@@ -361,11 +367,16 @@ class ProteinTransformer(nn.Module):
             * If ``labels`` is provided: ``(head_output, updated_labels)``
               tuple so the training loop can use the up-to-date labels.
         """
-        # Pad sequences: sliding types use the lemma; fixed max_seq_length
-        # types (e.g. linformer2d) pad to the declared fixed length.
+        # Pad/truncate sequences: sliding types use the lemma after optional
+        # truncation to max_seq_length; fixed max_seq_length non-sliding
+        # types pad or truncate directly to the declared fixed length.
         if self._is_sliding:
             input_ids, labels = self._pad_to_blocks(input_ids, labels)
         elif self._fixed_len_seq is not None:
+            if input_ids.shape[1] > self._fixed_len_seq:
+                input_ids = input_ids[:, :self._fixed_len_seq]
+                if labels is not None:
+                    labels = labels[:, :self._fixed_len_seq]
             pad_len = self._fixed_len_seq - input_ids.shape[1]
             if pad_len > 0:
                 input_ids = F.pad(input_ids, (0, pad_len), value=0)
