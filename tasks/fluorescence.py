@@ -99,7 +99,7 @@ class FluorescenceTask:
         trainer = Trainer(
             config=self.train_cfg,
             attn_name=f"fluorescence_{self.attn_cfg.type}",
-            select_by="val_metric",
+            select_by="val_loss",
             metric_label="ρ",
         )
         return trainer.fit(
