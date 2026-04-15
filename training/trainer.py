@@ -15,6 +15,7 @@ training resumes from the last saved epoch automatically.
 import contextlib
 import io
 import logging
+import math
 import os
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -69,6 +70,35 @@ class Trainer:
         )
 
     # ------------------------------------------------------------------
+    # Internal scheduler builder
+    # ------------------------------------------------------------------
+
+    def _build_scheduler(
+        self,
+        optimizer: optim.Optimizer,
+        warmup_steps: int,
+        total_steps: int,
+    ) -> Optional[torch.optim.lr_scheduler.LambdaLR]:
+        """Return a per-step LambdaLR scheduler, or ``None`` if not needed."""
+        scheduler_type = self.config.lr_scheduler
+        if warmup_steps == 0 and scheduler_type == "none":
+            return None
+
+        def lr_lambda(current_step: int) -> float:
+            if current_step < warmup_steps:
+                return float(current_step) / float(max(1, warmup_steps))
+            progress = float(current_step - warmup_steps) / float(
+                max(1, total_steps - warmup_steps)
+            )
+            if scheduler_type == "cosine":
+                return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+            if scheduler_type == "linear":
+                return max(0.0, 1.0 - progress)
+            return 1.0  # "none": flat after warmup
+
+        return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+    # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
@@ -108,6 +138,11 @@ class Trainer:
         model = model.to(self.device)
         optimizer = optim.Adam(model.parameters(), lr=self.config.learning_rate)
 
+        # Build LR scheduler (needs total steps, so requires loader length)
+        total_steps = self.config.epochs * len(train_loader)
+        warmup_steps_lr = int(self.config.warmup_ratio * total_steps)
+        scheduler = self._build_scheduler(optimizer, warmup_steps_lr, total_steps)
+
         start_epoch = 0
         history: Dict[str, List] = {
             "train_loss": [],
@@ -134,6 +169,8 @@ class Trainer:
             )
             start_epoch = ckpt.get("epoch", -1) + 1
             history = ckpt.get("history", history)
+            if scheduler is not None and "scheduler_state_dict" in ckpt:
+                scheduler.load_state_dict(ckpt["scheduler_state_dict"])
 
         # --- Training summary (printed once) ---
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -151,6 +188,11 @@ class Trainer:
                 print(f"  Window size       : {model.attn_cfg.window_size}")
         print(f"  Device            : {self.device}")
         print(f"  Epochs            : {self.config.epochs}")
+        print(f"  Learning rate     : {self.config.learning_rate}")
+        print(f"  LR scheduler      : {self.config.lr_scheduler}"
+              + (f"  (warmup {self.config.warmup_ratio:.0%} = {warmup_steps_lr} steps)"
+                 if warmup_steps_lr > 0 else ""))
+        print(f"  Grad clip         : {self.config.grad_clip if self.config.grad_clip > 0 else 'disabled'}")
         print(f"  Best-model by     : {self.select_by}")
         print(f"  Trainable params  : {total_params:,}")
         if frozen_params > 0:
@@ -178,7 +220,7 @@ class Trainer:
         for epoch in range(start_epoch, self.config.epochs):
             train_loss, train_metric = self._train_epoch(
                 model, train_loader, optimizer, criterion,
-                is_classification, tracker, metric_fn
+                is_classification, tracker, metric_fn, scheduler,
             )
             val_loss, val_metric = self._validate(
                 model, val_loader, criterion, metric_fn, is_classification
@@ -208,6 +250,7 @@ class Trainer:
                         "history": history,
                         "val_loss": val_loss,
                         "val_metric": val_metric,
+                        "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
                     },
                 )
                 logger.info("New best model saved at epoch %d.", epoch + 1)
@@ -235,7 +278,10 @@ class Trainer:
                 model,
                 optimizer,
                 epoch,
-                extra={"history": history},
+                extra={
+                    "history": history,
+                    "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
+                },
             )
 
         # Load the best weights back before returning.
@@ -267,6 +313,7 @@ class Trainer:
         is_classification: bool,
         tracker: Optional[EfficiencyTracker],
         metric_fn: Callable,
+        scheduler: Optional[torch.optim.lr_scheduler.LambdaLR] = None,
     ) -> Tuple[float, float]:
         model.train()
         total_loss = 0.0
@@ -308,7 +355,11 @@ class Trainer:
                 all_targets.append(targets.detach().cpu())
 
             loss.backward()
+            if self.config.grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), self.config.grad_clip)
             optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
             total_loss += loss.item()
             pbar.set_postfix(loss=f"{loss.item():.4f}")
 
