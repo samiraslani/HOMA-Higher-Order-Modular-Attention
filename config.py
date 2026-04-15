@@ -90,10 +90,17 @@ class TrainingConfig:
 
     Attributes:
         batch_size: Mini-batch size for the data loaders.
-        learning_rate: Initial Adam learning rate.
+        learning_rate: Initial Adam learning rate (peak LR after warmup).
         epochs: Total number of training epochs.
-        warmup_steps: Steps excluded from efficiency timing at the start of
-            each epoch (avoids measuring JIT-compilation overhead).
+        warmup_ratio: Fraction of total training steps used for linear LR
+            warmup (e.g. 0.06 = 6 %).  0.0 disables warmup.
+        lr_scheduler: LR schedule applied after warmup.  One of
+            ``"cosine"`` (cosine decay to 0), ``"linear"`` (linear decay
+            to 0), or ``"none"`` (constant LR after warmup).
+        grad_clip: Maximum global gradient norm for clipping.  0.0
+            disables clipping.  A value of 1.0 is a safe default.
+        warmup_steps: Steps excluded from efficiency timing at the start
+            of each epoch (avoids measuring JIT-compilation overhead).
         checkpoint_dir: Directory where ``*.pt`` checkpoints are saved.
         num_workers: DataLoader worker processes.
         device: ``"cuda"`` or ``"cpu"`` (auto-detected if not set).
@@ -101,6 +108,9 @@ class TrainingConfig:
     batch_size: int = 16
     learning_rate: float = 1e-4
     epochs: int = 20
+    warmup_ratio: float = 0.0
+    lr_scheduler: str = "none"
+    grad_clip: float = 0.0
     warmup_steps: int = 5
     checkpoint_dir: str = "checkpoints"
     num_workers: int = 0
