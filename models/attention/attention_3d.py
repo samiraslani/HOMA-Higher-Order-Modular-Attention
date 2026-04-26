@@ -315,7 +315,8 @@ class HOMA(AttentionBase):
 
         # ---- Fusion -------------------------------------------------------
         combined = torch.cat([attn_out_2d, res_3d], dim=-1)   # (B, Blk, H, L_b, 2·Dh)
-        out = self.fusion_layer(combined).view(B2, Blk, L_b, self.d_model)
+        out = self.fusion_layer(combined)                     # (B, Blk, H, L_b, Dh)
+        out = out.transpose(2, 3).contiguous().view(B2, Blk, L_b, self.d_model)
 
         # Reconstruct full sequence by averaging overlapping block outputs
         out_full = self._reconstruct_from_blocks(out, L, self.stride)
