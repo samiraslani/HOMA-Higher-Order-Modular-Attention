@@ -3,7 +3,7 @@
 
 HOMA is the primary contribution (2D + 3D fusion).
 MultiHeadAttn3D is a triadic-only blockwise attention with windowed (j, k)
-interactions and a low-rank L-matrix — no 2D branch, no fusion MLP.
+interactions and a low-rank U-matrix — no 2D branch, no fusion MLP.
 
 ``HOMA`` is the primary novel mechanism introduced in
 this work.  It extends standard 2D multi-head attention with a *third-order
@@ -13,8 +13,8 @@ key design choices:
 1. **Sliding-window (multi-ped) blocking** — the sequence is divided into
    overlapping blocks of length ``block_size`` with step ``stride``, so all
    tensor operations are local.
-2. **Low-rank L-matrix** — the additional ``L`` projection required for 3D
-   attention is factored as ``L = x W_{l_u} W_{l_v}`` with inner rank
+2. **Low-rank U-matrix** — the additional ``U`` projection required for 3D
+   attention is factored as ``U = x W_{u_u} W_{u_v}`` with inner rank
    ``rank``, reducing its parameter count from ``d^2`` to ``2 d · rank``
    (e.g., 262 k → 8 k for d=512, rank=8).
 
@@ -27,14 +27,14 @@ Transfer learning
 Pre-trained 2D weights (W_q, W_k, W_v) can be loaded from an existing
 checkpoint via ``load_pretrained_2d`` and optionally frozen, allowing the
 model to be initialised from a strong 2D baseline and to only train the 3D
-components (W_l_u, W_l_v, fusion_layer) from scratch.
+components (W_u_u, W_u_v, fusion_layer) from scratch.
 
 Mathematical formulation
 ------------------------
 Given input ``x ∈ R^{B × L × d}``:
 
   Q = x W_q,   K = x W_k,   V = x W_v         (standard 2D projections)
-  L_mat = (x W_{l_u}) W_{l_v}                   (low-rank third projection)
+  U_mat = (x W_{u_u}) W_{u_v}                   (low-rank third projection)
 
 After head-splitting and block-extraction (all tensors: B × Blk × H × L_b × d_h):
 
@@ -43,10 +43,10 @@ After head-splitting and block-extraction (all tensors: B × Blk × H × L_b × 
     attn_2d = softmax(scores_2d, dim=-1) · V        shape (B Blk H L_b d_h)
 
   **3D branch (local window w):**
-    For each position i, extract K_local, L_local, V_local from the w
+    For each position i, extract K_local, U_local, V_local from the w
     nearest neighbours (replicate-padded at boundaries):
 
-    scores_3d[i, j, k] = (Q[i] ⊙ K_local[j] ⊙ L_local[k]).sum() / √d_h
+    scores_3d[i, j, k] = (Q[i] ⊙ K_local[j] ⊙ U_local[k]).sum() / √d_h
                           j, k ∈ [0, w)
 
     attn_3d = softmax(scores_3d, dim=(-2, -1))      shape (B Blk H L_b w w)
@@ -73,8 +73,20 @@ from .base import AttentionBase, softmax_nd
 logger = logging.getLogger(__name__)
 
 
+def _remap_legacy_u_projection_keys(state_dict, prefix: str) -> None:
+    """Allow old checkpoints that used W_l_* names to load into W_u_* modules."""
+    for old, new in (("W_l_u", "W_u_u"), ("W_l_v", "W_u_v")):
+        for suffix in ("weight", "bias"):
+            old_key = f"{prefix}{old}.{suffix}"
+            new_key = f"{prefix}{new}.{suffix}"
+            if old_key in state_dict:
+                if new_key not in state_dict:
+                    state_dict[new_key] = state_dict[old_key]
+                del state_dict[old_key]
+
+
 class HOMA(AttentionBase):
-    """HOMA — Higher-Order MultiHead Attention with low-rank L-matrix and 2D transfer.
+    """HOMA — Higher-Order MultiHead Attention with low-rank U-matrix and 2D transfer.
 
     See module docstring for the full mathematical description.
 
@@ -85,7 +97,7 @@ class HOMA(AttentionBase):
         block_size: Number of tokens per block (``L_b``).
         window_size: Local context window size for 3D interactions (``w``).
             Must be odd (symmetric padding).
-        rank: Inner rank of the low-rank L-matrix decomposition.
+        rank: Inner rank of the low-rank U-matrix decomposition.
         load_from_pretrained_2d: If ``True``, load W_q/W_k/W_v weights from
             ``pretrained_2d_ckpt`` before any training.
         pretrained_2d_ckpt: Path to a ``.pt`` checkpoint file.  Required when
@@ -121,9 +133,9 @@ class HOMA(AttentionBase):
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
 
-        # Low-rank 3D projection  L = x W_{l_u} W_{l_v}
-        self.W_l_u = nn.Linear(d_model, rank, bias=False)
-        self.W_l_v = nn.Linear(rank, d_model, bias=False)
+        # Low-rank 3D projection  U = x W_{u_u} W_{u_v}
+        self.W_u_u = nn.Linear(d_model, rank, bias=False)
+        self.W_u_v = nn.Linear(rank, d_model, bias=False)
 
         # Fusion MLP that combines 2D and 3D outputs
         self.fusion_layer = nn.Sequential(
@@ -145,6 +157,14 @@ class HOMA(AttentionBase):
                 for p in layer.parameters():
                     p.requires_grad_(False)
             logger.info("Froze pretrained W_q, W_k, W_v")
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        _remap_legacy_u_projection_keys(state_dict, prefix)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict,
+            missing_keys, unexpected_keys, error_msgs,
+        )
 
     # ------------------------------------------------------------------
     # Pretrained weight loading
@@ -231,9 +251,9 @@ class HOMA(AttentionBase):
 
         mask_center = mask_blocks.unsqueeze(-1).unsqueeze(-1)   # (B, Blk, L_b, 1, 1)
         mask_k = mask_local.unsqueeze(-1)                       # (B, Blk, L_b, w, 1)
-        mask_l = mask_local.unsqueeze(-2)                       # (B, Blk, L_b, 1, w)
+        mask_u = mask_local.unsqueeze(-2)                       # (B, Blk, L_b, 1, w)
 
-        mask_window = mask_center * mask_k * mask_l             # (B, Blk, L_b, w, w)
+        mask_window = mask_center * mask_k * mask_u             # (B, Blk, L_b, w, w)
         return mask_window.unsqueeze(2)                         # (B, Blk, 1, 1, L_b, w, w)
 
     # ------------------------------------------------------------------
@@ -261,8 +281,8 @@ class HOMA(AttentionBase):
         q = self.W_q(x)
         k = self.W_k(x)
         v = self.W_v(x)
-        # Low-rank L-matrix
-        l_mat = self.W_l_v(self.W_l_u(x))
+        # Low-rank U-matrix
+        u_mat = self.W_u_v(self.W_u_u(x))
 
         # Slide into blocks, then split heads → (B, Blk, H, L_b, Dh)
         def _to_blocks_heads(t):
@@ -270,7 +290,10 @@ class HOMA(AttentionBase):
                 self._sliding_blocks(t, self.block_size, self.stride)
             )
 
-        Q, K, V, L_m = _to_blocks_heads(q), _to_blocks_heads(k), _to_blocks_heads(v), _to_blocks_heads(l_mat)
+        Q = _to_blocks_heads(q)
+        K = _to_blocks_heads(k)
+        V = _to_blocks_heads(v)
+        U_m = _to_blocks_heads(u_mat)
         B2, Blk, H, L_b, Dh = Q.shape
 
         # ---- 2D attention branch ----------------------------------------
@@ -285,7 +308,7 @@ class HOMA(AttentionBase):
 
         # ---- 3D local-window branch ------------------------------------
         K_pad = self._replicate_pad(K, pad)                  # (B, Blk, H, L_b+2p, Dh)
-        L_pad = self._replicate_pad(L_m, pad)
+        U_pad = self._replicate_pad(U_m, pad)
         V_pad = self._replicate_pad(V, pad)
 
         # Local windows: (B, Blk, H, L_b, w, Dh)
@@ -293,12 +316,12 @@ class HOMA(AttentionBase):
             return t.unfold(dimension=3, size=w, step=1).permute(0, 1, 2, 3, 5, 4).contiguous()
 
         K_local = _unfold_window(K_pad)
-        L_local = _unfold_window(L_pad)
+        U_local = _unfold_window(U_pad)
         V_local = _unfold_window(V_pad)
 
         # Tri-linear interaction scores: (B, Blk, H, L_b, w, w)
         scores_3d = torch.einsum(
-            "bphld,bphlwd,bphlvd->bphlwv", Q, K_local, L_local
+            "bphld,bphlwd,bphlvd->bphlwv", Q, K_local, U_local
         ) / (Dh ** 0.5)
 
         if mask is not None:
@@ -327,20 +350,20 @@ class MultiHeadAttn3D(AttentionBase):
     """Triadic-only blockwise attention with windowed (j, k) interactions.
 
     Unlike HOMA there is no 2D branch and no fusion MLP — this module computes
-    only the 3D triadic interaction with a low-rank L-matrix and local windows.
+    only the 3D triadic interaction with a low-rank U-matrix and local windows.
 
     Input sequence ``(B, L, d_model)`` is split into overlapping blocks of
     length ``block_size`` (step ``stride``).  Within each block, for every
     query position ``i``, attention is restricted to a local window of size
-    ``window_size`` for both the ``j`` (key) and ``k`` (L-matrix) indices:
+    ``window_size`` for both the ``j`` (key) and ``k`` (U-matrix) indices:
 
     .. math::
 
-        \\text{scores}[i,j,k] = \\frac{(Q_i \\odot K_{j}^{(w)} \\odot L_{k}^{(w)}) \\cdot \\mathbf{1}}{\\sqrt{d_h}},
+        \\text{scores}[i,j,k] = \\frac{(Q_i \\odot K_{j}^{(w)} \\odot U_{k}^{(w)}) \\cdot \\mathbf{1}}{\\sqrt{d_h}},
         \\quad j, k \\in [0, w)
 
-    The per-block cost is ``O(L_b · w²)`` and the L-matrix is factored as
-    ``L = x W_{l_u} W_{l_v}`` (rank ``rank``), keeping parameter count low.
+    The per-block cost is ``O(L_b · w²)`` and the U-matrix is factored as
+    ``U = x W_{u_u} W_{u_v}`` (rank ``rank``), keeping parameter count low.
 
     Args:
         num_heads: Number of parallel attention heads.
@@ -348,7 +371,7 @@ class MultiHeadAttn3D(AttentionBase):
         block_size: Number of tokens per sliding block (``L_b``).
         stride: Step between consecutive block start positions.
         window_size: Local context window size ``w`` (must be odd).
-        rank: Inner rank of the low-rank L-matrix decomposition.
+        rank: Inner rank of the low-rank U-matrix decomposition.
     """
 
     def __init__(
@@ -375,9 +398,17 @@ class MultiHeadAttn3D(AttentionBase):
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
 
-        # Low-rank L-matrix:  L = x W_{l_u} W_{l_v}
-        self.W_l_u = nn.Linear(d_model, rank, bias=False)
-        self.W_l_v = nn.Linear(rank, d_model, bias=False)
+        # Low-rank U-matrix:  U = x W_{u_u} W_{u_v}
+        self.W_u_u = nn.Linear(d_model, rank, bias=False)
+        self.W_u_v = nn.Linear(rank, d_model, bias=False)
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        _remap_legacy_u_projection_keys(state_dict, prefix)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict,
+            missing_keys, unexpected_keys, error_msgs,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -433,14 +464,14 @@ class MultiHeadAttn3D(AttentionBase):
         self,
         q: torch.Tensor,
         k: torch.Tensor,
-        l: torch.Tensor,
+        u: torch.Tensor,
         v: torch.Tensor,
         mask_blocks: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Windowed triadic self-attention.
 
         Args:
-            q, k, l, v: ``(B, Blk, H, L_b, head_dim)``
+            q, k, u, v: ``(B, Blk, H, L_b, head_dim)``
             mask_blocks: ``(B, Blk, L_b)`` or ``None``
 
         Returns:
@@ -451,7 +482,7 @@ class MultiHeadAttn3D(AttentionBase):
         scale = self.head_dim ** 0.5
 
         k_pad = self._replicate_pad(k, pad)
-        l_pad = self._replicate_pad(l, pad)
+        u_pad = self._replicate_pad(u, pad)
         v_pad = self._replicate_pad(v, pad)
 
         # (B, Blk, H, L_b, w, head_dim)
@@ -459,13 +490,13 @@ class MultiHeadAttn3D(AttentionBase):
             return t.unfold(dimension=3, size=w, step=1).permute(0, 1, 2, 3, 5, 4).contiguous()
 
         k_local = _unfold(k_pad)
-        l_local = _unfold(l_pad)
+        u_local = _unfold(u_pad)
         v_local = _unfold(v_pad)
 
         # scores: (B, Blk, H, L_b, w, w)
         scores = torch.einsum(
             "bphid,bphijd,bphikd->bphijk",
-            q, k_local, l_local
+            q, k_local, u_local
         ) / scale
 
         if mask_blocks is not None:
@@ -499,7 +530,7 @@ class MultiHeadAttn3D(AttentionBase):
         """
         B, L, _ = x.shape
 
-        l_mat = self.W_l_v(self.W_l_u(x))  # low-rank L projection
+        u_mat = self.W_u_v(self.W_u_u(x))  # low-rank U projection
 
         def _to_blocks_heads(t):
             return self._split_heads_blocks(
@@ -508,11 +539,11 @@ class MultiHeadAttn3D(AttentionBase):
 
         Q = _to_blocks_heads(self.W_q(x))
         K = _to_blocks_heads(self.W_k(x))
-        L_m = _to_blocks_heads(l_mat)
+        U_m = _to_blocks_heads(u_mat)
         V = _to_blocks_heads(self.W_v(x))
 
         mask_blocks = mask.float() if mask is not None else None
-        out = self._triadic_attention(Q, K, L_m, V, mask_blocks=mask_blocks)
+        out = self._triadic_attention(Q, K, U_m, V, mask_blocks=mask_blocks)
 
         # (B, Blk, H, L_b, Dh) → (B, Blk, L_b, D)
         B2, Blk, H, L_b, Dh = out.shape

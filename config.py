@@ -49,7 +49,7 @@ class AttentionConfig:
     ``"linformer2d"``
         Low-rank 2D attention (linformer_k, max_seq_length from ModelConfig).
     ``"homa"``  ← **main contribution**
-        HOMA (Higher-Order MultiHead Attention) with low-rank L-matrix and optional
+        HOMA (Higher-Order MultiHead Attention) with low-rank U-matrix and optional
         pretrained-2D transfer (block_size, stride, window_size, rank_3d,
         pretrained_ckpt, freeze_2d).
 
@@ -59,11 +59,11 @@ class AttentionConfig:
         stride: Step size between consecutive blocks.
         linformer_k: Low-rank projection dimension for Linformer2D.
         window_size: Local context window for HOMA attention.
-        rank_3d: Rank of the low-rank L-matrix decomposition in homa.
+        rank_3d: Rank of the low-rank U-matrix decomposition in homa.
         pretrained_ckpt: Path to a checkpoint whose W_q/W_k/W_v weights are
             loaded into the 2D projections of homa.
         freeze_2d: If True, freeze the loaded 2D projection weights so only
-            the 3D-specific parameters (W_l_u, W_l_v, fusion_layer) are
+            the 3D-specific parameters (W_u_u, W_u_v, fusion_layer) are
             trained.
     """
     type: str = "plain2d"

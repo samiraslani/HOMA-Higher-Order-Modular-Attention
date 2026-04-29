@@ -232,7 +232,7 @@ class ProteinTransformer(nn.Module):
         if resolved_ckpt is not None:
             print(f"  Transfer learning : blockwise 2D parameters (W_q, W_k, W_v) loaded from: {resolved_ckpt}")
         if attn_cfg.freeze_2d:
-            print("  Frozen layers     : W_q, W_k, W_v  (only W_l_u, W_l_v, fusion_layer will be trained)")
+            print("  Frozen layers     : W_q, W_k, W_v  (only W_u_u, W_u_v, fusion_layer will be trained)")
 
         # --- embeddings ---
         self.token_embedding = nn.Embedding(
@@ -405,5 +405,4 @@ class ProteinTransformer(nn.Module):
         if labels is not None:
             return out, labels
         return out
-
 
