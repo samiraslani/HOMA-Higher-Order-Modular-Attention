@@ -16,9 +16,9 @@ where $j$ and $k$ index positions within a local window of size $w$ around query
 |---|---|---|
 | 1 | **Overlapping blocks** | The sequence of length $L$ is partitioned into $T$ overlapping blocks of length $\ell$, applied to both the pairwise and triadic branches. This reduces global $O(L^2)$ / $O(L^3)$ cost to a block-local computation. |
 | 2 | **Local window for triadic attention** | Within each block, the triadic branch further restricts interactions to a sliding window of size $w$ around each query position, reducing the per-block triadic cost from $O(\ell^3)$ to $O(\ell \cdot w^2)$. |
-| 3 | **Low-rank U-matrix** | The third projection is factorised as $U = W_{l_u} W_{l_v}$ with inner rank $r$, cutting 3D parameters by ~97% (262 k → 8 k for $d$=512, $r$=8). |
+| 3 | **Low-rank U-matrix** | The third projection is factorised as $U = W_{u_u} W_{u_v}$ with inner rank $r$, cutting 3D parameters by ~97% (262 k → 8 k for $d$=512, $r$=8). |
 
-Transfer learning is supported for training HOMA attention mechanism: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a `blockwise2d` checkpoint and optionally frozen, so only the 3D-specific parameters ($W_{l_u}$, $W_{l_v}$, fusion MLP) are trained from scratch.
+Transfer learning is supported for training HOMA attention mechanism: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a `blockwise2d` checkpoint and optionally frozen, so only the 3D-specific parameters ($W_{u_u}$, $W_{u_v}$, fusion MLP) are trained from scratch.
 
 Built on the [TAPE benchmark](https://github.com/songlab-cal/tape) and evaluated on secondary structure prediction (SS3), fluorescence prediction, and stability prediction.
 
@@ -301,7 +301,7 @@ At the start of every training run the trainer prints a one-time setup summary s
 
 ```
   Transfer learning : blockwise 2D parameters (W_q, W_k, W_v) loaded from: checkpoints/blockwise2d.pt
-  Frozen layers     : W_q, W_k, W_v  (only W_l_u, W_l_v, fusion_layer will be trained)
+  Frozen layers     : W_q, W_k, W_v  (only W_u_u, W_u_v, fusion_layer will be trained)
 
 --------------------------------------------------
   Training Setup
