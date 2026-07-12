@@ -68,7 +68,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from .base import AttentionBase, softmax_nd
+from .base import AttentionBase
 
 logger = logging.getLogger(__name__)
 
@@ -319,22 +319,29 @@ class HOMA(AttentionBase):
         U_local = _unfold_window(U_pad)
         V_local = _unfold_window(V_pad)
 
-        # Tri-linear interaction scores: (B, Blk, H, L_b, w, w)
-        scores_3d = torch.einsum(
-            "bphld,bphlwd,bphlvd->bphlwv", Q, K_local, U_local
+        # Tri-linear interaction scores via batched matmul, equivalent to
+        # einsum "bphld,bphlwd,bphlvd->bphlwv": fold Q into the d axis first,
+        # then contract d against U_local.  (B, Blk, H, L_b, w, w)
+        QK_local = K_local * Q.unsqueeze(-2)                  # (B, Blk, H, L_b, w, Dh)
+        scores_3d = torch.matmul(
+            QK_local, U_local.transpose(-2, -1)
         ) / (Dh ** 0.5)
 
         if mask is not None:
             mask_window = self._build_window_mask(mask).to(scores_3d.device)
             scores_3d = scores_3d.masked_fill(mask_window == 0, -1e9)
 
-        attn_3d = softmax_nd(scores_3d, dim=(-2, -1))        # (B, Blk, H, L_b, w, w)
+        # Softmax over the last two (w, w) axes — flatten-then-softmax is
+        # equivalent to softmax_nd(dim=(-2, -1)).
+        attn_3d = torch.softmax(
+            scores_3d.flatten(-2), dim=-1
+        ).view_as(scores_3d)                                 # (B, Blk, H, L_b, w, w)
 
-        # Outer-product value interaction: (B, Blk, H, L_b, w, w, Dh)
-        VV_local = torch.einsum("bphlwd,bphlvd->bphlwvd", V_local, V_local)
-
-        # Aggregate → (B, Blk, H, L_b, Dh)
-        res_3d = torch.einsum("bphlwv,bphlwvd->bphld", attn_3d, VV_local)
+        # Aggregate without materialising VV_local = V_local ⊗ V_local,
+        # equivalent to einsum "bphlwv,bphlwvd->bphld": sum over v first, then
+        # multiply by V_local[w] and sum over w.
+        weighted_V = torch.matmul(attn_3d, V_local)          # (B, Blk, H, L_b, w, Dh)
+        res_3d = (weighted_V * V_local).sum(dim=-2)          # (B, Blk, H, L_b, Dh)
 
         # ---- Fusion -------------------------------------------------------
         combined = torch.cat([attn_out_2d, res_3d], dim=-1)   # (B, Blk, H, L_b, 2·Dh)
@@ -493,23 +500,27 @@ class MultiHeadAttn3D(AttentionBase):
         u_local = _unfold(u_pad)
         v_local = _unfold(v_pad)
 
-        # scores: (B, Blk, H, L_b, w, w)
-        scores = torch.einsum(
-            "bphid,bphijd,bphikd->bphijk",
-            q, k_local, u_local
+        # scores via batched matmul, equivalent to
+        # einsum "bphid,bphijd,bphikd->bphijk": (B, Blk, H, L_b, w, w)
+        qk_local = k_local * q.unsqueeze(-2)                    # (B, Blk, H, L_b, w, head_dim)
+        scores = torch.matmul(
+            qk_local, u_local.transpose(-2, -1)
         ) / scale
 
         if mask_blocks is not None:
             mask_window = self._build_window_mask(mask_blocks).to(scores.device)
             scores = scores.masked_fill(mask_window == 0, -1e9)
 
-        attn = softmax_nd(scores, dim=(-2, -1))                 # (B, Blk, H, L_b, w, w)
+        # Softmax over the last two (w, w) axes.
+        attn = torch.softmax(
+            scores.flatten(-2), dim=-1
+        ).view_as(scores)                                       # (B, Blk, H, L_b, w, w)
 
-        # Outer-product value interaction: (B, Blk, H, L_b, w, w, head_dim)
-        v_paired = torch.einsum("bphijd,bphikd->bphijkd", v_local, v_local)
-
-        # Aggregate: (B, Blk, H, L_b, head_dim)
-        return torch.einsum("bphijk,bphijkd->bphid", attn, v_paired)
+        # Aggregate without materialising v_paired = v_local ⊗ v_local,
+        # equivalent to einsum "bphijk,bphijkd->bphid": sum over k first, then
+        # multiply by v_local[j] and sum over j.
+        weighted_v = torch.matmul(attn, v_local)               # (B, Blk, H, L_b, w, head_dim)
+        return (weighted_v * v_local).sum(dim=-2)              # (B, Blk, H, L_b, head_dim)
 
     # ------------------------------------------------------------------
     # Forward pass
