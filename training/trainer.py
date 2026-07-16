@@ -186,6 +186,10 @@ class Trainer:
             print(f"  Rank              : {model.attn_cfg.rank_3d}")
             if model.attn_cfg.type.lower() in ("homa", "blockwise3d"):
                 print(f"  Window size       : {model.attn_cfg.window_size}")
+                if getattr(model.attn_cfg, "tie_u_to_k", False):
+                    print(f"  Tie U -> K        : yes (score = Q·K·K)")
+                if getattr(model.attn_cfg, "uniform_pool_3d", False):
+                    print(f"  Triadic attention : UNIFORM POOL (ablation, no scores)")
         print(f"  Device            : {self.device}")
         print(f"  Epochs            : {self.config.epochs}")
         print(f"  Learning rate     : {self.config.learning_rate}")

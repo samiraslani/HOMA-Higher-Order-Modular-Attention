@@ -79,6 +79,7 @@ class AttentionConfig:
     window_size: int = 7
     rank_3d: int = 8
     tie_u_to_k: bool = False  # homa: reuse K as the third (U) factor -> score = Q·K·K (no separate U)
+    uniform_pool_3d: bool = False  # homa: ablate triadic attention -> uniform V⊙V pooling (no scores)
 
     # Transfer-learning for homa
     pretrained_ckpt: Optional[str] = None

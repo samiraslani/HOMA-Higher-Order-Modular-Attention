@@ -121,6 +121,7 @@ class HOMA(AttentionBase):
         freeze_2d: bool = False,
         prefix_hint: str = "",
         tie_u_to_k: bool = False,
+        uniform_pool_3d: bool = False,
     ) -> None:
         super().__init__(num_heads, d_model)
         self.stride = stride
@@ -130,6 +131,9 @@ class HOMA(AttentionBase):
         # If True, the third (U) factor reuses the key projection K instead of a
         # separate low-rank U: score[i,j,k] = sum_d Q[i]·K[j]·K[k].
         self.tie_u_to_k = tie_u_to_k
+        # If True, ablate the triadic attention: replace softmax with a uniform
+        # average over the window, keeping only the V⊙V value pooling.
+        self.uniform_pool_3d = uniform_pool_3d
 
         # 2D projection matrices
         self.W_q = nn.Linear(d_model, d_model)
@@ -137,8 +141,10 @@ class HOMA(AttentionBase):
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
 
-        # Low-rank 3D projection  U = x W_{u_u} W_{u_v}  (skipped when U is tied to K)
-        if not tie_u_to_k:
+        # Low-rank 3D projection  U = x W_{u_u} W_{u_v}.  Skipped when the U
+        # factor is unused: tied to K, or the triadic attention is ablated to
+        # a uniform pool (no scores) — in both cases no U parameters are added.
+        if not tie_u_to_k and not uniform_pool_3d:
             self.W_u_u = nn.Linear(d_model, rank, bias=False)
             self.W_u_v = nn.Linear(rank, d_model, bias=False)
 
@@ -286,8 +292,14 @@ class HOMA(AttentionBase):
         q = self.W_q(x)
         k = self.W_k(x)
         v = self.W_v(x)
-        # Third (U) factor: reuse K when tied, else the low-rank U projection
-        u_mat = k if self.tie_u_to_k else self.W_u_v(self.W_u_u(x))
+        # Third (U) factor: reuse K when tied, else the low-rank U projection.
+        # Not needed at all when the triadic attention is ablated (uniform pool).
+        if self.uniform_pool_3d:
+            u_mat = None
+        elif self.tie_u_to_k:
+            u_mat = k
+        else:
+            u_mat = self.W_u_v(self.W_u_u(x))
 
         # Slide into blocks, then split heads → (B, Blk, H, L_b, Dh)
         def _to_blocks_heads(t):
@@ -298,7 +310,7 @@ class HOMA(AttentionBase):
         Q = _to_blocks_heads(q)
         K = _to_blocks_heads(k)
         V = _to_blocks_heads(v)
-        U_m = _to_blocks_heads(u_mat)
+        U_m = None if u_mat is None else _to_blocks_heads(u_mat)
         B2, Blk, H, L_b, Dh = Q.shape
 
         # ---- 2D attention branch ----------------------------------------
@@ -312,47 +324,57 @@ class HOMA(AttentionBase):
         attn_out_2d = torch.matmul(attn_2d, V)              # (B, Blk, H, L_b, Dh)
 
         # ---- 3D local-window branch ------------------------------------
-        K_pad = self._replicate_pad(K, pad)                  # (B, Blk, H, L_b+2p, Dh)
-        U_pad = self._replicate_pad(U_m, pad)
-        V_pad = self._replicate_pad(V, pad)
-
         # Local windows: (B, Blk, H, L_b, w, Dh)
         def _unfold_window(t):
             return t.unfold(dimension=3, size=w, step=1).permute(0, 1, 2, 3, 5, 4).contiguous()
 
-        K_local = _unfold_window(K_pad)
-        U_local = _unfold_window(U_pad)
-        V_local = _unfold_window(V_pad)
+        V_local = _unfold_window(self._replicate_pad(V, pad))
 
-        # Tri-linear interaction scores via batched matmul, equivalent to
-        # einsum "bphld,bphlwd,bphlvd->bphlwv": fold Q into the d axis first,
-        # then contract d against U_local.  (B, Blk, H, L_b, w, w)
-        QK_local = K_local * Q.unsqueeze(-2)                  # (B, Blk, H, L_b, w, Dh)
-        scores_3d = torch.matmul(
-            QK_local, U_local.transpose(-2, -1)
-        ) / (Dh ** 0.5)
-
-        if mask is not None:
-            mask_window = self._build_window_mask(mask).to(scores_3d.device)
-            scores_3d = scores_3d.masked_fill(mask_window == 0, -1e9)
-
-        # Softmax over the last two (w, w) axes — flatten-then-softmax is
-        # equivalent to softmax_nd(dim=(-2, -1)).
-        attn_3d = torch.softmax(
-            scores_3d.flatten(-2), dim=-1
-        ).view_as(scores_3d)                                 # (B, Blk, H, L_b, w, w)
-
-        # --- U-axis entropy (optional regulariser) --------------------------
-        # Stash the mean entropy of the U (v) axis marginal so a training loss
-        # can penalise it and push the U axis away from uniform.  attn_3d is
-        # (..., w_key, w_U); marginalise the key axis (dim -2) to get p(U).
-        p_u = attn_3d.sum(dim=-2)                            # (B, Blk, H, L_b, w) over U
-        ent_u = -(p_u.clamp_min(1e-9) * p_u.clamp_min(1e-9).log()).sum(dim=-1)  # (B,Blk,H,L_b)
-        if mask is not None:
-            qm = mask.unsqueeze(2).expand_as(ent_u).to(ent_u.dtype)   # (B,Blk,H,L_b)
-            self.u_axis_entropy = (ent_u * qm).sum() / qm.sum().clamp_min(1.0)
+        if self.uniform_pool_3d:
+            # --- Ablation: uniform pooling of V⊙V (no scores, no softmax) -----
+            # Replace the learned triadic attention with a uniform average over
+            # the valid window pairs, keeping only the V⊙V value interaction.
+            # Tests whether the attention selectivity contributes at all.
+            ones = torch.ones(
+                (*V_local.shape[:-1], w),                    # (B, Blk, H, L_b, w, w)
+                device=V_local.device, dtype=V_local.dtype,
+            )
+            if mask is not None:
+                mask_window = self._build_window_mask(mask).to(ones.device)
+                ones = ones * (mask_window != 0).to(ones.dtype)
+            attn_3d = ones / ones.sum(dim=(-2, -1), keepdim=True).clamp_min(1.0)
+            self.u_axis_entropy = None
         else:
-            self.u_axis_entropy = ent_u.mean()
+            K_local = _unfold_window(self._replicate_pad(K, pad))
+            U_local = _unfold_window(self._replicate_pad(U_m, pad))
+            # Tri-linear interaction scores via batched matmul, equivalent to
+            # einsum "bphld,bphlwd,bphlvd->bphlwv": fold Q into the d axis first,
+            # then contract d against U_local.  (B, Blk, H, L_b, w, w)
+            QK_local = K_local * Q.unsqueeze(-2)                  # (B, Blk, H, L_b, w, Dh)
+            scores_3d = torch.matmul(
+                QK_local, U_local.transpose(-2, -1)
+            ) / (Dh ** 0.5)
+
+            if mask is not None:
+                mask_window = self._build_window_mask(mask).to(scores_3d.device)
+                scores_3d = scores_3d.masked_fill(mask_window == 0, -1e9)
+
+            # Softmax over the last two (w, w) axes — flatten-then-softmax is
+            # equivalent to softmax_nd(dim=(-2, -1)).
+            attn_3d = torch.softmax(
+                scores_3d.flatten(-2), dim=-1
+            ).view_as(scores_3d)                                 # (B, Blk, H, L_b, w, w)
+
+            # --- U-axis entropy (optional regulariser) ----------------------
+            # Stash the mean entropy of the U (v) axis marginal so a training
+            # loss can penalise it and push the U axis away from uniform.
+            p_u = attn_3d.sum(dim=-2)                            # (B, Blk, H, L_b, w) over U
+            ent_u = -(p_u.clamp_min(1e-9) * p_u.clamp_min(1e-9).log()).sum(dim=-1)
+            if mask is not None:
+                qm = mask.unsqueeze(2).expand_as(ent_u).to(ent_u.dtype)
+                self.u_axis_entropy = (ent_u * qm).sum() / qm.sum().clamp_min(1.0)
+            else:
+                self.u_axis_entropy = ent_u.mean()
 
         # Aggregate without materialising VV_local = V_local ⊗ V_local,
         # equivalent to einsum "bphlwv,bphlwvd->bphld": sum over v first, then
