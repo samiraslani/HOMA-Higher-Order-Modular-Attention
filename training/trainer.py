@@ -193,6 +193,8 @@ class Trainer:
               + (f"  (warmup {self.config.warmup_ratio:.0%} = {warmup_steps_lr} steps)"
                  if warmup_steps_lr > 0 else ""))
         print(f"  Grad clip         : {self.config.grad_clip if self.config.grad_clip > 0 else 'disabled'}")
+        u_lam = getattr(self.config, "u_entropy_lambda", 0.0)
+        print(f"  U-entropy penalty : {u_lam if u_lam > 0 else 'disabled'}")
         print(f"  Best-model by     : {self.select_by}")
         print(f"  Trainable params  : {total_params:,}")
         if frozen_params > 0:
