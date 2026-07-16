@@ -115,3 +115,4 @@ class TrainingConfig:
     checkpoint_dir: str = "checkpoints"
     num_workers: int = 0
     device: Optional[str] = None
+    u_entropy_lambda: float = 0.0  # weight of the HOMA U-axis entropy penalty (0.0 = off)

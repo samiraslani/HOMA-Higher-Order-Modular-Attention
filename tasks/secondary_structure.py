@@ -92,7 +92,18 @@ class SecondaryStructureTask:
         train_loader = self.make_loader(train_lmdb, tokenizer, shuffle=True)
         val_loader = self.make_loader(val_lmdb, tokenizer, shuffle=False)
 
-        criterion = nn.CrossEntropyLoss(ignore_index=-100)
+        _ce = nn.CrossEntropyLoss(ignore_index=-100)
+        u_lambda = getattr(self.train_cfg, "u_entropy_lambda", 0.0)
+        if u_lambda > 0:
+            def criterion(logits, labels):
+                loss = _ce(logits, labels)
+                ents = [m.u_axis_entropy for m in model.modules()
+                        if getattr(m, "u_axis_entropy", None) is not None]
+                if ents:
+                    loss = loss + u_lambda * torch.stack(ents).mean()
+                return loss
+        else:
+            criterion = _ce
         metric_fn = lambda logits, labels: accuracy_per_position(logits, labels)
 
         trainer = Trainer(

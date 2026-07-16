@@ -337,6 +337,18 @@ class HOMA(AttentionBase):
             scores_3d.flatten(-2), dim=-1
         ).view_as(scores_3d)                                 # (B, Blk, H, L_b, w, w)
 
+        # --- U-axis entropy (optional regulariser) --------------------------
+        # Stash the mean entropy of the U (v) axis marginal so a training loss
+        # can penalise it and push the U axis away from uniform.  attn_3d is
+        # (..., w_key, w_U); marginalise the key axis (dim -2) to get p(U).
+        p_u = attn_3d.sum(dim=-2)                            # (B, Blk, H, L_b, w) over U
+        ent_u = -(p_u.clamp_min(1e-9) * p_u.clamp_min(1e-9).log()).sum(dim=-1)  # (B,Blk,H,L_b)
+        if mask is not None:
+            qm = mask.unsqueeze(2).expand_as(ent_u).to(ent_u.dtype)   # (B,Blk,H,L_b)
+            self.u_axis_entropy = (ent_u * qm).sum() / qm.sum().clamp_min(1.0)
+        else:
+            self.u_axis_entropy = ent_u.mean()
+
         # Aggregate without materialising VV_local = V_local ⊗ V_local,
         # equivalent to einsum "bphlwv,bphlwvd->bphld": sum over v first, then
         # multiply by V_local[w] and sum over w.
