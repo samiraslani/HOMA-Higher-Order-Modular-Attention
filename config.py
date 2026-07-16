@@ -78,6 +78,7 @@ class AttentionConfig:
     # 3D sliding-window specific
     window_size: int = 7
     rank_3d: int = 8
+    tie_u_to_k: bool = False  # homa: reuse K as the third (U) factor -> score = Q·K·K (no separate U)
 
     # Transfer-learning for homa
     pretrained_ckpt: Optional[str] = None

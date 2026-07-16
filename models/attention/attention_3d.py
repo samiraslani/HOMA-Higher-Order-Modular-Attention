@@ -120,12 +120,16 @@ class HOMA(AttentionBase):
         pretrained_2d_ckpt: Optional[str] = None,
         freeze_2d: bool = False,
         prefix_hint: str = "",
+        tie_u_to_k: bool = False,
     ) -> None:
         super().__init__(num_heads, d_model)
         self.stride = stride
         self.block_size = block_size
         self.window_size = window_size
         self.rank = rank
+        # If True, the third (U) factor reuses the key projection K instead of a
+        # separate low-rank U: score[i,j,k] = sum_d Q[i]·K[j]·K[k].
+        self.tie_u_to_k = tie_u_to_k
 
         # 2D projection matrices
         self.W_q = nn.Linear(d_model, d_model)
@@ -133,9 +137,10 @@ class HOMA(AttentionBase):
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
 
-        # Low-rank 3D projection  U = x W_{u_u} W_{u_v}
-        self.W_u_u = nn.Linear(d_model, rank, bias=False)
-        self.W_u_v = nn.Linear(rank, d_model, bias=False)
+        # Low-rank 3D projection  U = x W_{u_u} W_{u_v}  (skipped when U is tied to K)
+        if not tie_u_to_k:
+            self.W_u_u = nn.Linear(d_model, rank, bias=False)
+            self.W_u_v = nn.Linear(rank, d_model, bias=False)
 
         # Fusion MLP that combines 2D and 3D outputs
         self.fusion_layer = nn.Sequential(
@@ -281,8 +286,8 @@ class HOMA(AttentionBase):
         q = self.W_q(x)
         k = self.W_k(x)
         v = self.W_v(x)
-        # Low-rank U-matrix
-        u_mat = self.W_u_v(self.W_u_u(x))
+        # Third (U) factor: reuse K when tied, else the low-rank U projection
+        u_mat = k if self.tie_u_to_k else self.W_u_v(self.W_u_u(x))
 
         # Slide into blocks, then split heads → (B, Blk, H, L_b, Dh)
         def _to_blocks_heads(t):

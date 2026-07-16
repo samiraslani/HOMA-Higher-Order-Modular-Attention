@@ -209,6 +209,7 @@ class ProteinTransformer(nn.Module):
             linformer_k=attn_cfg.linformer_k,
             window_size=attn_cfg.window_size,
             rank=attn_cfg.rank_3d,
+            tie_u_to_k=attn_cfg.tie_u_to_k,
             load_from_pretrained_2d=(resolved_ckpt is not None),
             pretrained_2d_ckpt=resolved_ckpt,
             freeze_2d=attn_cfg.freeze_2d,
