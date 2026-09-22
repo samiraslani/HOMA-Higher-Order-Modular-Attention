@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "homa"
+version = "1.0.0"
+description = "HOMA: Higher-Order Modular Attention, with the code to reproduce every table in the paper"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = ["torch>=2.1", "numpy>=1.24"]
+
+[project.optional-dependencies]
+tape = ["scipy>=1.11", "lmdb>=1.4", "tqdm>=4.62"]
+figures = ["matplotlib>=3.7"]
+test = ["pytest>=7"]
+all = ["scipy>=1.11", "lmdb>=1.4", "tqdm>=4.62", "matplotlib>=3.7", "pytest>=7"]
+
+[tool.setuptools.packages.find]
+include = ["homa*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: trains a model (about 10 s each on CPU)"]
