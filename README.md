@@ -20,10 +20,7 @@ where $j$ and $k$ index positions within a local window of size $w$ around query
 
 Transfer learning is supported for training the HOMA attention mechanism: pretrained 2D weights ($W_q, W_k, W_v$) can be loaded from a `blockwise2d` checkpoint and optionally frozen, so only the 3D-specific parameters ($W_{u_u}$, $W_{u_v}$, fusion MLP) are trained from scratch.
 
-The repository covers two families of tasks:
-
-* **Diagnostic tasks** — PARITY-$k$ / MAJORITY-$k$ and MATCH2 / MATCH3 — small synthetic problems that isolate the interaction order a mechanism can represent.
-* **Protein-sequence tasks** from the [TAPE benchmark](https://github.com/songlab-cal/tape) — secondary structure prediction (SS3), contact prediction and fluorescence prediction.
+The code covers the diagnostic tasks (PARITY / MAJORITY, MATCH2 / MATCH3) and the [TAPE](https://github.com/songlab-cal/tape) protein tasks (secondary structure, contact prediction, fluorescence) described in the paper.
 
 > **Paper:** [HOMA: Higher-Order Modular Attention for Protein Sequence Modelling](https://arxiv.org/abs/2603.11133)
 
@@ -36,14 +33,11 @@ The repository covers two families of tasks:
 - [Dataset setup](#dataset-setup)
 - [Architecture](#architecture)
 - [Attention mechanisms](#attention-mechanisms)
-- [Diagnostic tasks](#diagnostic-tasks)
-- [Protein-sequence tasks](#protein-sequence-tasks)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Running the experiments](#running-the-experiments)
 - [Training output](#training-output)
 - [Best-model selection](#best-model-selection)
-- [Multi-seed experiments](#multi-seed-experiments)
 - [Checkpointing](#checkpointing)
 - [Efficiency tracking](#efficiency-tracking)
 - [Citation](#citation)
@@ -145,7 +139,7 @@ DATA_ROOT/
     proteinnet_test.lmdb
 ```
 
-File names may also be `<split>.lmdb` (e.g. `train.lmdb`). Pass the folder as `--data-root` (or set `$TAPE_DATA_DIR`). ProteinNet can live elsewhere: pass `--proteinnet DIR` or set `$PROTEINNET_DIR`. The contact loader checks that coordinates are in Ångströms before thresholding at 8 Å; an 8.0 threshold on picometre coordinates would fail silently rather than loudly.
+File names may also be `<split>.lmdb` (e.g. `train.lmdb`). Pass the folder as `--data-root` (or set `$TAPE_DATA_DIR`). ProteinNet can live elsewhere: pass `--proteinnet DIR` or set `$PROTEINNET_DIR`.
 
 The TAPE download mirror currently returns HTTP 403, so the data has to come from an existing copy.
 
@@ -193,109 +187,22 @@ $T$ = number of overlapping blocks, $\ell$ = block size (default 30), $w$ = wind
 
 ---
 
-## Diagnostic tasks
+## Quick start
 
-The diagnostic tasks live in `tasks/diagnostic/` and need only `numpy` and `torch`.
-
-All diagnostic models share one deliberately minimal backbone (`TinyModel`): an embedding, the attention layers, and a linear read-out, with **no feed-forward sublayer**. An FFN can compute parity by itself and would hide what the attention contributes; without it, the attention is the only place where positions interact. The attention arms are defined once in `tasks/diagnostic/mechanisms.py` and selected by name:
-
-| Arm | Model |
-|---|---|
-| `blockwise2d` (= `plain2d`, `pairwise2d`) | Pairwise-2D. The sequence is one block, so blockwise and plain pairwise attention are the same operator |
-| `blockwise3d` | Blockwise-3D: triadic attention only |
-| `homa` | HOMA: pairwise + triadic, fused by an MLP |
-| `homa_add` | HOMA-add: pairwise + triadic, plain sum (same parameter count as Blockwise-3D) |
-| `homa_uniform`, `homa_add_uniform` | the triadic softmax replaced by a uniform average over the window |
-| `homa_tiedu`, `homa_add_tiedu` | no dedicated third projection: $U := K$ |
-
-### PARITY-k and MAJORITY-k
-
-Random bit sequences of length $L=16$. Each interior position $i$ is labelled from the bits at $k$ fixed offsets around it:
-
-* **PARITY-$k$**: $y_i = b_{i+o_1} \oplus \dots \oplus b_{i+o_k}$ — an irreducible order-$k$ interaction: every strict subset of the $k$ bits is independent of the label.
-* **MAJORITY-$k$**: $y_i = \mathbb{1}\left[\sum_j b_{i+o_j} > k/2\right]$ — a threshold on a sum of the same bits, which a pairwise mechanism separates at every $k$. It is the control: an effect that appears on MAJORITY as well as PARITY is not about interaction order.
-
-Depth is stacked pre-norm with residual connections, at every depth including depth 1, so that depth is the only thing that changes along the depth axis.
-
-```bash
-python experiments/run_parity.py                     # k = 1..5, depth 1/6/12, width 32/64, 3 seeds
-python experiments/run_parity.py --preset capacity   # PARITY-3, one layer, widths 8-128
-python experiments/run_parity.py --preset long       # Pairwise-2D on PARITY-5, 120 epochs
-python experiments/run_parity.py --orders 3,4,5 --depths 1 --widths 64
-python experiments/run_parity.py --quick             # ~2 min pipeline check
-```
+### Diagnostic tasks
 
 ```python
-from tasks.diagnostic import run_one, DEFAULT_CFG
+from tasks.diagnostic import run_one, DEFAULT_CFG, match_run_one, PUBLISHED_M
 
 rec = run_one("homa", family="parity", k=4, d_model=64, seed=0,
               n_layers=1, cfg=DEFAULT_CFG, device="cuda")
-print(rec["final"], rec["params"])     # final test accuracy, parameter count
-```
-
-`rec` also holds the per-epoch test-accuracy curve (`curve`), the realised offsets, the window, the chance level and the wall time.
-
-### MATCH2 and MATCH3
-
-Integer sequences $x \in \mathbb{Z}_M^N$ (the task family of Sanford et al., 2024). Each position is labelled by whether it completes a pair or triple that sums to zero modulo $M$:
-
-* **MATCH2**: $y_i = \mathbb{1}\left[\exists j:\ x_i + x_j \equiv 0 \pmod M\right]$ — realisable by a single self-attention unit.
-* **MATCH3**: $y_i = \mathbb{1}\left[\exists j, k:\ x_i + x_j + x_k \equiv 0 \pmod M\right]$ — the smallest case of Sanford et al.'s separation between pairwise and third-order attention.
-
-
-
-```bash
-python experiments/run_match.py                      
-python experiments/run_match.py --orders 2           
-python experiments/run_match.py --lengths 8 --widths 64
-python experiments/run_match.py --quick              
-```
-
-```python
-from tasks.diagnostic import match_run_one, PUBLISHED_M
+print(rec["final"], rec["params"])      # final test accuracy, parameter count
 
 rec = match_run_one("homa", order=3, N=6, M=PUBLISHED_M[(3, 6)], d_model=32,
                     heads=4, seed=0, device="cuda",
                     epochs=40, train_n=30000, test_n=2000, lr=3e-3, rank=8)
-print(rec["final"], rec["majority"])   # final test accuracy, majority-class baseline
+print(rec["final"], rec["majority"])    # final test accuracy, majority-class baseline
 ```
-
-### Triadic window coverage
-
-`run_coverage.py` asks what happens when the interaction reaches past the triadic window. A window of size $w$ centred on the query sees offsets up to $\pm(w-1)/2$; stacking $L$ layers composes windows. On PARITY-3 with offsets $(-R, 0, +R)$, it varies the interaction reach $R$ against the window ($w = 3, 7$, one layer) and against depth ($w=3$, depth 1, 2, 4). The labelled positions are fixed to those valid at the largest reach, so widening $R$ does not also reduce the number of labels.
-
-```bash
-python experiments/run_coverage.py                  
-python experiments/run_coverage.py --phases cliff
-```
-
----
-
-## Protein-sequence tasks
-
-The three TAPE tasks live in `tasks/protein/`. Each has a task class with `build_model()` and `make_loader()`.
-
-| Task | Label | Metric | Class |
-|---|---|---|---|
-| Secondary structure | per residue: helix / strand / coil | Q3 accuracy on CB513, CASP12 and TS115 | `SecondaryStructureTask` |
-| Contact prediction | per residue pair: $C_\alpha$ within 8 Å | precision at $L/5$ over long-range pairs ($\lvert i-j\rvert \ge 24$) | `ContactPredictionTask` |
-| Fluorescence | per sequence: log fluorescence | Spearman $\rho$ | `FluorescenceTask` |
-
-Contact prediction uses the same encoder with a symmetric pairwise head, which scores each residue pair from the product and difference of the two residue representations. Pairs closer than 6 along the sequence are excluded from the loss and the metric.
-
-`run_tape.py` runs all three:
-
-```bash
-python experiments/run_tape.py --data-root DATA_ROOT                       # all three tasks
-python experiments/run_tape.py --data-root DATA_ROOT --tasks contact --widths 64
-python experiments/run_tape.py --data-root DATA_ROOT --quick               # pipeline check
-```
-
-It writes `results/tape.json` (secondary structure and fluorescence) and `results/contact.json`.
-
----
-
-## Quick start
 
 ### Secondary structure prediction (SS3)
 
@@ -372,13 +279,19 @@ The diagnostic tasks take a small dictionary instead (`DEFAULT_CFG` in `tasks/di
 
 ## Running the experiments
 
-| Experiment | Command |
-|---|---|
-| PARITY / MAJORITY across order, depth and width | `python experiments/run_parity.py` |
-| MATCH3 across sequence length and width | `python experiments/run_match.py` |
-| MATCH2 | `python experiments/run_match.py --orders 2` |
-| Triadic window coverage and depth | `python experiments/run_coverage.py` |
-| Secondary structure, contact prediction, fluorescence | `python experiments/run_tape.py --data-root DATA_ROOT` |
+```bash
+python experiments/run_parity.py                       # PARITY / MAJORITY, every order, depth and width
+python experiments/run_parity.py --preset capacity     # PARITY-3, one layer, widths 8-128
+python experiments/run_parity.py --preset long         # Pairwise-2D on PARITY-5, 120 epochs
+python experiments/run_match.py                        # MATCH3
+python experiments/run_match.py --orders 2             # MATCH2
+python experiments/run_coverage.py                     # triadic window coverage and depth
+python experiments/run_tape.py --data-root DATA_ROOT   # secondary structure, contact, fluorescence
+python experiments/run_tape.py --data-root DATA_ROOT --tasks contact --widths 64
+```
+
+Results are written to `results/` after every run, and a restarted runner skips what is already done. Every runner takes `--quick` for a short pipeline check, `--tables-only` to print a summary of an existing results file, and `--help` for all options.
+
 ---
 
 ## Training output
