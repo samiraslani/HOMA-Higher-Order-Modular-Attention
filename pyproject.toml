@@ -13,8 +13,7 @@ dependencies = ["torch>=2.1", "numpy>=1.24"]
 
 [project.optional-dependencies]
 tape = ["scipy>=1.11", "lmdb>=1.4", "tqdm>=4.62"]
-test = ["pytest>=7"]
-all = ["scipy>=1.11", "lmdb>=1.4", "tqdm>=4.62", "pytest>=7"]
+all = ["scipy>=1.11", "lmdb>=1.4", "tqdm>=4.62"]
 
 [tool.setuptools]
 py-modules = ["config"]
@@ -22,5 +21,3 @@ py-modules = ["config"]
 [tool.setuptools.packages.find]
 include = ["models*", "tasks*", "data*", "training*", "evaluation*", "utils*"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]

@@ -50,19 +50,12 @@ HOMA-Higher-Order-Modular-Attention-new
 ├── utils/
 │   ├── seed.py                       # set_seed()
 │   └── checkpointing.py              # save_checkpoint, load_checkpoint
-├── experiments/                      # one runner per experiment
-│   ├── common.py                     # resumable result store, device selection, shared CLI
-│   ├── run_parity.py                 # PARITY / MAJORITY: Table 1, Figure 2
-│   ├── run_match.py                  # MATCH2 / MATCH3: Table 2
-│   ├── run_coverage.py               # window coverage and depth: Figure 4
-│   └── run_tape.py                   # secondary structure, contact, fluorescence: Figure 3
-└── tests/                            # about 15 s on a laptop
-    ├── conftest.py
-    ├── test_mechanisms.py            # every arm builds; published parameter counts
-    ├── test_parity.py                # offsets, labels, boundary masking, chance level
-    ├── test_match.py                 # labels vs brute force; published moduli
-    ├── test_contact.py               # contact parameter counts, symmetry, precision
-    └── test_tape_compat.py           # tokenizer matches TAPE
+└── experiments/                      # one runner per experiment
+    ├── common.py                     # resumable result store, device selection, shared CLI
+    ├── run_parity.py                 # PARITY / MAJORITY: Table 1, Figure 2
+    ├── run_match.py                  # MATCH2 / MATCH3: Table 2
+    ├── run_coverage.py               # window coverage and depth: Figure 4
+    └── run_tape.py                   # secondary structure, contact, fluorescence: Figure 3
 ```
 
 ## Install
@@ -70,7 +63,6 @@ HOMA-Higher-Order-Modular-Attention-new
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt  # torch, numpy, scipy, lmdb, tqdm
-pip install pytest               # only to run the tests
 ```
 
 Run everything from the repository root. The runners in `experiments/` find the
@@ -88,19 +80,6 @@ pieces of it this code used, the IUPAC tokenizer and the LMDB reader, are
 reproduced in `data/tape_compat.py` with identical behaviour.
 
 Tested with Python 3.12 under torch 2.7.1 and torch 2.14 (NumPy 2.2 and 2.5).
-
-## Experiments and tests
-
-The two folders do different jobs:
-
-* **`experiments/`** is how you **produce results**. Each script trains a grid
-  of models and writes a results file. A run takes minutes to GPU-days.
-* **`tests/`** is how you **check the code is correct**, and is not needed to run
-  anything. The suite runs in about 15 seconds (`pytest`), makes assertions
-  rather than writing results, and should pass after any change to the code.
-  For example, `test_mechanisms.py` checks that every arm builds with exactly
-  the published parameter count; a parameter count is a fingerprint of an
-  architecture, so a changed width, head or residual path fails it.
 
 ## What produces what
 

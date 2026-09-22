@@ -38,8 +38,7 @@ def match_labels(X, M, order, distinct=False):
         S_1 = {x_t},   S_2[r] = OR_t S_1[(r - x_t) mod M]
         y_i = S_{order-1}[(-x_i) mod M]
 
-    This returns exactly what direct enumeration does; ``tests/test_match.py``
-    checks it against brute force at both orders.
+    This returns exactly what direct enumeration does, at both orders.
     """
     if order not in (2, 3):
         raise ValueError("order must be 2 (MATCH2) or 3 (MATCH3)")
@@ -93,8 +92,8 @@ def calibrate_M(N, order, target=0.5, seed=0):
 
     The search brackets are those that produced the published moduli:
     ``[N/4, 8N]`` for MATCH2 and ``[N^2/8, 4N^2]`` for MATCH3.
-    :data:`PUBLISHED_M` records the answers and ``tests/test_match.py`` pins
-    them, so a change to the search can never silently move a published column
+    :data:`PUBLISHED_M` records the answers and the runner checks the
+    calibration against them at startup, so a change to the search can never silently move a published column
     onto a different task.
     """
     if order not in (2, 3):

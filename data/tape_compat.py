@@ -14,7 +14,6 @@ identical, including the edge cases:
 * An unrecognised residue raises ``KeyError``.  It is not mapped to ``<unk>``.
 * A record without an ``id`` field is given ``str(index)``.
 
-``tests/test_tape_compat.py`` checks the vocabulary against the published one.
 If ``tape_proteins`` does import in your environment, the two are
 interchangeable.
 """
