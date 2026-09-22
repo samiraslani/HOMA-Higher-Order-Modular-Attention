@@ -1,10 +1,9 @@
 #!/usr/bin/env python
-"""Every supplementary table body, rebuilt from result files.
+"""The LaTeX bodies of the results tables, rebuilt from result files.
 
-This is the script that generated the tables in the supplement, with its inputs
-made configurable.  Run on the published result files it reproduces the
-supplement's table bodies exactly; run on the files this package's runners
-write, it rebuilds the same tables from a reproduction.
+Run on the original result files it reproduces the published table bodies
+exactly; run on the files this package's runners write, it rebuilds the same
+tables from a reproduction.
 
     python reproduce/make_tables.py                  # from results/
     python reproduce/make_tables.py --published DIR  # from the original files
@@ -20,10 +19,10 @@ Inputs (defaults are what the runners write under results/):
     --long            run_parity.py --preset long      results/parity_long.json
     --match           run_match.py                     results/match.json
     --tape            run_tape.py                      results/tape.json
-    --contact         run_contact.py                   results/contact.json
+    --contact         run_tape.py --tasks contact      results/contact.json
 
 Output is LaTeX: each block is a table body preceded by a ``% ---- TAB <name>``
-marker, using the supplement's ``\\sd{}`` macro.
+marker, using an ``\\sd{}`` macro for the standard deviation.
 
 Two conventions are fixed here and stated in the document:
 
@@ -53,7 +52,7 @@ PUBLISHED_NAMES = dict(
     depth="results_depth.json",
     order_capacity="homa_order_capacity/results_order_capacity.json",
     long="results_depth_long.json",
-    match="match_q_sweep.json",
+    match="match_q_sweep.json",          # the original MATCH results file
     tape="homa_capacity_sweep.json",
     contact="contact_capacity.json",
 )
@@ -333,8 +332,8 @@ def long_table():
     return L
 
 
-# Table S6 (the 120-epoch rerun) was removed from the supplement on Overleaf;
-# long_table() is kept so the numbers stay reproducible.
+# The 120-epoch rerun is not reported; long_table() is kept so its numbers
+# can still be rebuilt from results/parity_long.json.
 
 
 # ===========================================================================
@@ -653,8 +652,8 @@ def matched_table(t):
     return L
 
 
-# The accuracy-matched tables (formerly S10-S12) were removed from the
-# supplement on Overleaf; matched_table() is kept so they stay reproducible.
+# The accuracy-matched tables are not reported; matched_table() is kept so
+# they can still be rebuilt.
 
 
 # ===========================================================================
@@ -728,10 +727,6 @@ def depth_table():
 
 emit("TAB coverage_depth", depth_table())
 
-
-# ===========================================================================
-# Component teardown and the marginalised-attention control
-# ===========================================================================
 
 print("\n".join(OUT))
 if FAILED_CHECKS:

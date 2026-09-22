@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 """PARITY-k and MAJORITY-k across interaction order, depth and width.
 
-Produces Table 1 of the main paper and Supplementary Tables S4-S5, plus the
-convergence curves behind Figure 2.  Three presets:
+Produces Table 1 of the paper, the lower orders and the MAJORITY control that
+accompany it, and the convergence curves behind Figure 2.  Three presets:
 
-    --preset grid       Table 1 and S4: order x depth x width, residual at
-                        every depth (the default)
-    --preset capacity   S5: PARITY-3 at depth 1 across widths 8-128, a single
+    --preset grid       order x depth x width, residual at every depth
+                        (the default; Table 1)
+    --preset capacity   PARITY-3 at depth 1 across widths 8-128, a single
                         attention layer with NO residual path
     --preset long       Pairwise-2D on PARITY-5 at d=64, depths 1, 6, 12,
                         rerun for 120 epochs instead of 40
@@ -59,15 +59,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from experiments.common import (banner, base_parser, fmt_cell, int_list,
                                 mean_sd, pick_device, ResultStore, run_jobs)
-from homa.synthetic import PAPER_NAME, epochs_to
-from homa.synthetic.order_tasks import run_one
+from homa.tasks.diagnostic import PAPER_NAME, epochs_to
+from homa.tasks.diagnostic.parity_majority import run_one
 
 #: The protocol behind every published parity number.
 PUBLISHED_CFG = dict(seq_len=16, reach=3, heads=4, rank=8, stride=8,
                      train_n=3000, test_n=800, epochs=40, batch_size=128,
                      lr=2e-3)
 
-#: Table 1 reports these; k=1,2 go to Supplementary Table S4(a).
+#: Table 1 reports k=3-5; k=1,2 are the lower-order check.
 PUBLISHED_ORDERS = [1, 2, 3, 4, 5]
 PUBLISHED_DEPTHS = [1, 6, 12]
 PUBLISHED_WIDTHS = [32, 64]
@@ -86,7 +86,7 @@ PRESETS = {
     "grid": dict(orders=PUBLISHED_ORDERS, depths=PUBLISHED_DEPTHS,
                  widths=PUBLISHED_WIDTHS, families=PUBLISHED_FAMILIES,
                  arms=PUBLISHED_ARMS, residual=True, epochs=40),
-    # S5.  The width axis was run as one attention layer applied directly,
+    # The width axis was run as one attention layer applied directly,
     # without the residual path the depth grid uses; its parameter counts
     # match only that (e.g. HOMA at d=64: 25,362 here, 25,490 in Table 1).
     # plain2d runs alongside blockwise2d because at one block the two are the
@@ -96,7 +96,7 @@ PRESETS = {
                      families=["parity"],
                      arms=["plain2d", "blockwise2d", "blockwise3d", "homa"],
                      residual=False, epochs=40),
-    # Formerly Table S6.  The one cell the paper reruns at three times the budget, because
+    # A rerun at three times the budget of the one cell where
     # Pairwise-2D was still climbing at epoch 40.
     "long": dict(orders=[5], depths=[1, 6, 12], widths=[64],
                  families=["parity"], arms=["blockwise2d"],
@@ -198,7 +198,7 @@ def print_grid(runs, args):
 
 
 def print_epochs(runs, args, thresh=0.90):
-    """Supplementary Table S4(c): epochs to 0.90 on parity."""
+    """Epochs to 0.90 on parity."""
     print(f"\n{'=' * 74}\n  PARITY: mean epochs to {thresh:.2f} "
           f"(seeds reaching it, of {len(args.seed_list)})\n{'=' * 74}")
     head = "  " + "width".ljust(7) + "mechanism".ljust(15)

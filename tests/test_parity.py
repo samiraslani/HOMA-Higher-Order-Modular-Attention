@@ -1,6 +1,6 @@
 import torch
 
-from homa.synthetic.order_tasks import (DEFAULT_CFG, centers_for, chance_level,
+from homa.tasks.diagnostic.parity_majority import (DEFAULT_CFG, centers_for, chance_level,
                                         make_data, make_offsets)
 
 

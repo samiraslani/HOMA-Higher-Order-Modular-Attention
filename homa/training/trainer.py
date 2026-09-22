@@ -2,7 +2,7 @@
 Unified training loop for all published tasks.
 
 ``Trainer`` supports both per-residue classification (SS3) and global
-regression (fluorescence, stability) by accepting task-specific loss and
+regression (fluorescence) by accepting task-specific loss and
 metric functions.
 
 Checkpointing
@@ -41,7 +41,7 @@ class Trainer:
         select_by: Which validation signal determines the best checkpoint.
             ``"val_loss"`` minimises validation loss (used for SS3);
             ``"val_metric"`` maximises the primary task metric, i.e. Spearman ρ
-            (used for fluorescence and stability).
+            (used for fluorescence).
     """
 
     def __init__(

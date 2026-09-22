@@ -1,6 +1,8 @@
 import torch
 
-from homa.contact import build_contact_model, precision_at_L_over_k, silence_padding_log
+from homa.tasks.protein.contact_prediction import (build_contact_model,
+                                                   precision_at_L_over_k,
+                                                   silence_padding_log)
 
 
 def test_published_contact_parameter_counts_d32():

@@ -5,7 +5,7 @@ Two task head classes are provided:
 
 * ``PerResidueHead``      — per-position classification (e.g. SS3 prediction).
 * ``GlobalRegressionHead`` — sequence-level regression via mean pooling
-                             (e.g. fluorescence / stability prediction).
+                             (e.g. fluorescence prediction).
 
 Typical usage::
 
@@ -21,7 +21,7 @@ Typical usage::
     head = PerResidueHead(d_model=model_cfg.d_model, num_classes=3)
     model = ProteinTransformer(model_cfg, attn_cfg, head)
 
-    # Fluorescence / stability
+    # Fluorescence
     head = GlobalRegressionHead(d_model=model_cfg.d_model, d_ff=128)
     model = ProteinTransformer(model_cfg, attn_cfg, head)
 """
@@ -307,11 +307,6 @@ class ProteinTransformer(nn.Module):
 
         if attn_type == "linformer2d":
             return mask.unsqueeze(1).unsqueeze(3)                  # (B, 1, L, 1)
-
-        if attn_type == "plain3d":
-            # Dense triadic attention is not blocked, and expands this to both
-            # the j and k axes of its (B, H, L, L, L) score tensor itself.
-            return mask                                            # (B, L)
 
         if attn_type == "blockwise2d":
             block_size = self.attn_cfg.block_size

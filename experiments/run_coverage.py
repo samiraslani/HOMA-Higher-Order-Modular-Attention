@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Triadic window coverage on PARITY-3: the window's reach against the task's.
 
-Produces Figure 4 and Supplementary Tables S10 (the cliff) and S11 (depth).
+Produces Figure 4 of the paper: the window cliff and the depth ablation.
 
 Two reaches, which must not be confused
 ---------------------------------------
@@ -48,8 +48,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from experiments.common import (banner, base_parser, fmt_cell, int_list,
                                 mean_sd, pick_device, ResultStore, run_jobs)
-from homa.synthetic import PAPER_NAME
-from homa.synthetic.order_tasks import centers_for, make_offsets, run_one
+from homa.tasks.diagnostic import PAPER_NAME
+from homa.tasks.diagnostic.parity_majority import centers_for, make_offsets, run_one
 
 PUBLISHED_CFG = dict(seq_len=24, reach=3, heads=4, rank=8, stride=8,
                      train_n=3000, test_n=800, epochs=40, batch_size=128,

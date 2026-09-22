@@ -41,7 +41,7 @@ def spearman_correlation(
 ) -> float:
     """Spearman rank correlation coefficient.
 
-    Used for regression tasks (fluorescence, stability).
+    Used for the fluorescence regression task.
 
     Args:
         predictions: Predicted values — any shape (will be flattened).

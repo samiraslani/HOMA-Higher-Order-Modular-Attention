@@ -22,7 +22,7 @@ layer.  That is what makes the order comparison a statement about attention.
 
 Example
 -------
-    from homa.synthetic.order_tasks import run_one, DEFAULT_CFG
+    from homa.tasks.diagnostic.parity_majority import run_one, DEFAULT_CFG
 
     rec = run_one("homa", family="parity", k=4, d_model=32, seed=0,
                   n_layers=1, cfg=DEFAULT_CFG, device="cuda")
@@ -209,7 +209,7 @@ def build_model(mech: str, d_model: int, heads: int, L: int, window: int,
     The published depth grid (Table 1) was run with ``residual=True`` at every
     depth including depth 1, which is why that is the default here.
 
-    The arms themselves come from :mod:`homa.synthetic.mechanisms`, which is
+    The arms themselves come from :mod:`homa.tasks.diagnostic.mechanisms`, which is
     the single definition shared with the match and teardown runners.
     """
     if not is_known(mech):

@@ -9,7 +9,7 @@ paper, so a failure here means the code no longer builds the published model.
 import pytest
 import torch
 
-from homa.synthetic import MECHANISMS, build_model, match_build_model, n_params
+from homa.tasks.diagnostic import MECHANISMS, build_model, match_build_model, n_params
 
 
 @pytest.mark.parametrize("mech", MECHANISMS + ("homa_w3",))
@@ -25,7 +25,7 @@ def test_unknown_arm_is_refused():
         build_model("homa_typo", 32, 4, 16, 7, 8, 8)
 
 
-# Table 1: depth grid, residual at every depth (results_depth.json)
+# Table 1: depth grid, residual at every depth
 @pytest.mark.parametrize("mech,expected", [
     ("blockwise2d", 18178), ("blockwise3d", 19202),
     ("homa_add", 19202), ("homa", 25490)])
@@ -40,17 +40,16 @@ def test_homa_add_is_parameter_matched_to_blockwise3d():
     assert a == b
 
 
-# Table 3: one layer, NO residual (Sweep A of results_order_capacity.json)
+# Table 3: one layer, NO residual
 @pytest.mark.parametrize("mech,expected", [
     ("homa", 8650), ("homa_uniform", 8138), ("homa_tiedu", 8138),
-    ("homa_linj", 8650), ("homa_add", 5442), ("homa_add_uniform", 4930),
-    ("homa_add_tiedu", 4930), ("homa_add_linj", 5442)])
+    ("homa_add", 5442), ("homa_add_uniform", 4930), ("homa_add_tiedu", 4930)])
 def test_table3_teardown_d32(mech, expected):
     assert n_params(build_model(mech, 32, 4, 16, 7, 8, 8, n_layers=1,
                                 residual=False)) == expected
 
 
-# Table 2: MATCH3 at N=6 (match_q_sweep.json)
+# Table 2: MATCH3 at N=6
 def test_table2_match_homa_d32():
     m = match_build_model("homa", d_model=32, heads=4, N=6, vocab=30)
     assert sum(p.numel() for p in m.parameters()) == 9906

@@ -1,19 +1,17 @@
-"""MATCH-$q$ on integer sequences: does some $q$-tuple sum to zero mod $M$?
+"""MATCH2 and MATCH3 on integer sequences: does some pair / triple sum to zero mod M?
 
 The task family of Sanford et al. (2024).  MATCH2 is realisable by one
 self-attention unit; MATCH3 is the smallest case their separation covers, and a
-single unit of third-order attention computes it.  Generalised here to any
-order, because MATCH-q for q > 3 asks a different question --- whether a
-third-order operator *composes* across depth to reach an order it cannot
-express in one layer.
+single unit of third-order attention computes it.
 
-Kept in ``synthetic/`` alongside ``order_tasks`` and for the same reason: it
-needs only numpy and torch, so it stays runnable in a bare Colab VM.
+    y_i = 1  iff  exists j        with  x_i + x_j       = 0 (mod M)   [MATCH2]
+    y_i = 1  iff  exists j, k     with  x_i + x_j + x_k = 0 (mod M)   [MATCH3]
 
-    from homa.synthetic.match_tasks import run_one, calibrate_M
-    M = calibrate_M(N=8, order=4)
-    rec = run_one("homa", order=4, N=8, M=M, d_model=64, seed=0,
-                  device="cuda")
+Needs only numpy and torch, so it stays runnable in a bare Colab VM.
+
+    from homa.tasks.diagnostic.match import run_one, PUBLISHED_M
+    rec = run_one("homa", order=3, N=6, M=PUBLISHED_M[(3, 6)], d_model=32,
+                  heads=4, seed=0, device="cuda")
 """
 
 from __future__ import annotations
@@ -29,9 +27,7 @@ from .mechanisms import build_attention, is_known
 
 
 def match_labels(X, M, order, distinct=False):
-    """Labels for MATCH-q, any ``order`` >= 2.
-
-        y_i = 1  iff  exists j_1..j_{q-1}  with  x_i + x_{j_1} + ... = 0 (mod M)
+    """Labels for MATCH2 (``order=2``) and MATCH3 (``order=3``).
 
     Indices are drawn with repetition over all N positions (``distinct=False``,
     the plain "exists" reading and the only one consistent with a
@@ -39,15 +35,14 @@ def match_labels(X, M, order, distinct=False):
     (q-1)-sums does not depend on the anchor i, so it is computed once per
     sequence and indexed:
 
-        S_1 = {x_t},   S_{j+1}[r] = OR_t S_j[(r - x_t) mod M]
-        y_i = S_{q-1}[(-x_i) mod M]
+        S_1 = {x_t},   S_2[r] = OR_t S_1[(r - x_t) mod M]
+        y_i = S_{order-1}[(-x_i) mod M]
 
-    O(q*N*n*M), which replaces the O(N^(q-1)) tensor an explicit enumeration
-    would need.  At q = 2, 3 this returns exactly what direct enumeration does;
-    ``tests_match_labels`` checks that.
+    This returns exactly what direct enumeration does; ``tests/test_match.py``
+    checks it against brute force at both orders.
     """
-    if order < 2:
-        raise ValueError("order must be >= 2")
+    if order not in (2, 3):
+        raise ValueError("order must be 2 (MATCH2) or 3 (MATCH3)")
     if distinct:
         raise NotImplementedError(
             "distinct=True is not supported: the DP assumes repetition, which "
@@ -67,11 +62,6 @@ def match_labels(X, M, order, distinct=False):
     return S[rows, (-X) % M].astype(np.int64)
 
 
-def tuple_count(N, order):
-    """Number of (q-1)-tuples a query can draw, with repetition."""
-    return N ** (order - 1) / math.factorial(order - 1)
-
-
 def base_rate(N, M, order, seed=0, n=400):
     rng = np.random.default_rng(seed)
     X = rng.integers(0, M, size=(n, N))
@@ -88,38 +78,29 @@ def base_rate(N, M, order, seed=0, n=400):
 #: that it still does.
 PUBLISHED_M = {
     (2, 6): 9, (2, 8): 14,
-    (3, 6): 30, (3, 8): 56, (3, 12): 116, (3, 16): 206, (3, 24): 465,
-    (4, 8): 186, (4, 12): 575,
-    (5, 8): 520, (5, 12): 1922,
+    (3, 6): 30, (3, 8): 56,
 }
 
 
 def calibrate_M(N, order, target=0.5, seed=0):
     """Pick the modulus that makes the two classes as close to balanced as possible.
 
-    Without this the task silently becomes trivial: MATCH-q label density grows
-    like 1 - exp(-N^(q-1) / ((q-1)! M)), so holding M fixed while sweeping N
-    drives the positive rate to 1 and a constant predictor scores whatever that
-    rate is.  Balancing per (N, order) keeps the majority-class baseline at
-    ~0.50 for every cell, so accuracies are comparable across the sweep.
+    Without this the task silently becomes trivial: MATCH3 label density grows
+    like 1 - exp(-N^2 / (2M)), so holding M fixed while N grows drives the
+    positive rate to 1 and a constant predictor scores whatever that rate is.
+    Balancing per (N, order) keeps the majority-class baseline near 0.50 for
+    every cell, so accuracies are comparable across lengths.
 
-    Two search brackets, and the reason it is not one.  Every published cell at
-    order 2 and 3 was calibrated with the closed-form bracket
-    ``[N^2/8, 4N^2]``; the order-4 and order-5 cells were added later and used
-    a bracket scaled by the tuple count ``T = N^(q-1)/(q-1)!``, because the
-    closed form returns an endpoint for every order above 3.  The two do not
-    agree at order 3 -- the tuple-count bracket gives M = 31 at N = 6 where the
-    published value is 30 -- so collapsing them into one formula would shift
-    five published columns onto a different task.  Each order therefore keeps
-    the bracket that generated its published numbers.  :data:`PUBLISHED_M`
-    records the answers and ``tests/test_match.py`` pins them.
+    The search brackets are those that produced the published moduli:
+    ``[N/4, 8N]`` for MATCH2 and ``[N^2/8, 4N^2]`` for MATCH3.
+    :data:`PUBLISHED_M` records the answers and ``tests/test_match.py`` pins
+    them, so a change to the search can never silently move a published column
+    onto a different task.
     """
-    if order <= 3:
-        lo, hi = ((max(2, int(N / 4)), max(8, 8 * N)) if order == 2
-                  else (max(2, int(N * N / 8)), max(8, 4 * N * N)))
-    else:
-        T = tuple_count(N, order)
-        lo, hi = max(2, int(T / 8)), max(16, int(8 * T))
+    if order not in (2, 3):
+        raise ValueError("order must be 2 (MATCH2) or 3 (MATCH3)")
+    lo, hi = ((max(2, int(N / 4)), max(8, 8 * N)) if order == 2
+              else (max(2, int(N * N / 8)), max(8, 4 * N * N)))
 
     best, best_err = None, 9.9
     for M in np.unique(np.geomspace(lo, hi, 40).astype(int)):
@@ -249,7 +230,7 @@ def build_model(mech, *, d_model, heads, N, vocab, rank=8, n_layers=1,
     is about interaction order rather than reach.  ``block_size = stride = N``
     gives a single full-sequence block for the same reason.
 
-    Arms come from :mod:`homa.synthetic.mechanisms`.  That matters here: the
+    Arms come from :mod:`homa.tasks.diagnostic.mechanisms`.  That matters here: the
     published HOMA-add column of Table 2 was produced by patching this function
     at run time from the sweep notebook, so ``homa_add`` was reachable in the
     run but not in the committed source.  It is a first-class arm now.

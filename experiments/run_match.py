@@ -1,37 +1,36 @@
 #!/usr/bin/env python
-"""MATCH-q on Z_M: does some q-tuple sum to zero modulo M?
+"""MATCH2 and MATCH3: does some pair / triple sum to zero modulo M?
 
-Produces Table 2 of the main paper (MATCH3 at N = 6, 8 across widths) and
-Supplementary Tables S6-S7 (the MATCH2 control, and the two further widths
-d = 8 and 256).  The same runner covers the MATCH-q extension at q = 4, 5.
+Produces Table 2 of the paper (MATCH3 at N = 6, 8 across widths), the widths
+d = 8 and 256 on either side of it, and the MATCH2 control (``--orders 2``).
 
 The task
 --------
-    y_i = 1  iff  there exist j_1..j_{q-1}  with  x_i + x_{j_1} + ... = 0 (mod M)
+    y_i = 1  iff  exists j        with  x_i + x_j       = 0 (mod M)   [MATCH2]
+    y_i = 1  iff  exists j, k     with  x_i + x_j + x_k = 0 (mod M)   [MATCH3]
 
 This is the family of Sanford et al. (2024).  MATCH2 is realisable by one
 self-attention unit; MATCH3 is the smallest case their separation covers, and
-a single unit of third-order attention computes it.  q > 3 asks a different
-question -- whether a third-order operator *composes* across depth to reach an
-order it cannot express in one layer.
+a single unit of third-order attention computes it.
 
 Two things this runner holds fixed, both of which silently ruin the comparison
 if they move:
 
-``M`` is calibrated per (N, q) so the majority-class baseline sits near 0.50.
-MATCH-q label density grows like ``1 - exp(-N^(q-1) / ((q-1)! M))``, so a fixed
-M across an N sweep drives the positive rate to 1 and a constant predictor
-scores whatever that rate is.  The published moduli are pinned in
-``homa.synthetic.match_tasks.PUBLISHED_M`` and asserted against the calibration
-at startup, because M is a property of the task: if it differed between two
-arms in a column, the accuracies in that column would not be comparable.
+``M`` is calibrated per (N, order) so the majority-class baseline sits near
+0.50.  MATCH3 label density grows like ``1 - exp(-N^2 / (2M))``, so a fixed M
+across lengths drives the positive rate to 1 and a constant predictor scores
+whatever that rate is.  The published moduli are pinned in
+``homa.tasks.diagnostic.match.PUBLISHED_M`` and asserted against the
+calibration at startup, because M is a property of the task: if it differed
+between two arms in a column, the accuracies in that column would not be
+comparable.
 
-The embedding is a frozen Fourier basis, not a learned lookup table.  MATCH-q
-otherwise asks the model to discover modular arithmetic *and* to route q values
-through it, and the first is the famously slow problem and not the one under
-test -- with a learned table both a pairwise and a triadic model plateau near
-0.74 and then overfit, which says nothing about interaction order.  The Fourier
-basis is also the representation the theory assumes: the indicator of
+The embedding is a frozen Fourier basis, not a learned lookup table.  MATCH3
+otherwise asks the model to discover modular arithmetic *and* to route three
+values through it, and the first is the famously slow problem and not the one
+under test -- with a learned table both a pairwise and a triadic model plateau
+near 0.74 and then overfit, which says nothing about interaction order.  The
+Fourier basis is also the representation the theory assumes: the indicator of
 ``s = 0 (mod M)`` is ``(1/M) sum_w exp(2*pi*i*w*s/M)``, and with these features
 a trilinear form expresses ``cos(w(x_i + x_j + x_k))`` exactly while a bilinear
 one has no such expansion.  The projection on top stays learnable, so what is
@@ -39,9 +38,9 @@ frozen is the modular structure, not the model's choice of frequencies.
 
 Usage
 -----
-    python experiments/run_match.py                   # Table 2
-    python experiments/run_match.py --quick           # ~3 min, pipeline check
+    python experiments/run_match.py                   # Table 2 (MATCH3)
     python experiments/run_match.py --orders 2        # the MATCH2 control
+    python experiments/run_match.py --quick           # ~3 min, pipeline check
     python experiments/run_match.py --lengths 8 --widths 64 --tables-only
 """
 
@@ -55,14 +54,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from experiments.common import (banner, base_parser, fmt_cell, int_list,
                                 mean_sd, pick_device, ResultStore, run_jobs)
-from homa.synthetic import PAPER_NAME, PUBLISHED_M
-from homa.synthetic.match_tasks import calibrate_M, full_window, run_one
+from homa.tasks.diagnostic import PAPER_NAME, PUBLISHED_M
+from homa.tasks.diagnostic.match import calibrate_M, full_window, run_one
 
 #: The protocol behind every published MATCH number.
 PUBLISHED_CFG = dict(heads=4, epochs=40, train_n=30000, test_n=2000,
                      lr=3e-3, rank=8)
 
-#: Table 2 shows widths 16-128; S7 adds 8 and 256.
+#: Table 2 shows widths 16-128; 8 and 256 bracket it.
 PUBLISHED_WIDTHS = [8, 16, 32, 64, 128, 256]
 TABLE2_WIDTHS = [16, 32, 64, 128]
 PUBLISHED_ARMS = ["pairwise2d", "blockwise3d", "homa_add", "homa"]
@@ -211,6 +210,9 @@ def main() -> None:
     args = p.parse_args()
 
     args.order_list = int_list(args.orders)
+    bad = [q for q in args.order_list if q not in (2, 3)]
+    if bad:
+        p.error(f"--orders must be 2 (MATCH2) and/or 3 (MATCH3); got {bad}")
     args.length_list = int_list(args.lengths)
     args.width_list = int_list(args.widths)
     args.seed_list = int_list(args.seeds)
@@ -233,7 +235,7 @@ def main() -> None:
                                      for (q, n), v in moduli.items()}))
 
     if not args.tables_only:
-        banner("MATCH-q across sequence length and width", device, cfg)
+        banner("MATCH2 / MATCH3 across sequence length and width", device, cfg)
         if args.quick:
             print("  !! --quick: reduced budget, these are NOT published "
                   "numbers\n")

@@ -1,5 +1,5 @@
 from homa.data.tape_compat import IUPAC_VOCAB, TAPETokenizer
-from homa.contact.data import IUPAC
+from homa.tasks.protein.contact_prediction import IUPAC
 
 
 def test_vocab_is_the_published_iupac():
