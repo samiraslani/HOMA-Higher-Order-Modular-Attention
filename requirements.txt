@@ -1,9 +1,7 @@
-# Core: the synthetic experiments (PARITY, MAJORITY, MATCH, teardown, coverage)
+# Core: the diagnostic tasks (PARITY, MAJORITY, MATCH, window coverage)
 torch>=2.1
 numpy>=1.24
-# TAPE and contact prediction
+# The protein tasks (secondary structure, contact prediction, fluorescence)
 scipy>=1.11        # Spearman rho for fluorescence
 lmdb>=1.4          # TAPE / ProteinNet LMDB files
 tqdm>=4.62
-# Figures (optional)
-matplotlib>=3.7

@@ -1,6 +1,6 @@
 import torch
 
-from homa.tasks.protein.contact_prediction import (build_contact_model,
+from tasks.protein.contact_prediction import (build_contact_model,
                                                    precision_at_L_over_k,
                                                    silence_padding_log)
 

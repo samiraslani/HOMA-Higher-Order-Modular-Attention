@@ -20,7 +20,7 @@ if they move:
 0.50.  MATCH3 label density grows like ``1 - exp(-N^2 / (2M))``, so a fixed M
 across lengths drives the positive rate to 1 and a constant predictor scores
 whatever that rate is.  The published moduli are pinned in
-``homa.tasks.diagnostic.match.PUBLISHED_M`` and asserted against the
+``tasks.diagnostic.match.PUBLISHED_M`` and asserted against the
 calibration at startup, because M is a property of the task: if it differed
 between two arms in a column, the accuracies in that column would not be
 comparable.
@@ -54,8 +54,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from experiments.common import (banner, base_parser, fmt_cell, int_list,
                                 mean_sd, pick_device, ResultStore, run_jobs)
-from homa.tasks.diagnostic import PAPER_NAME, PUBLISHED_M
-from homa.tasks.diagnostic.match import calibrate_M, full_window, run_one
+from tasks.diagnostic import PAPER_NAME, PUBLISHED_M
+from tasks.diagnostic.match import calibrate_M, full_window, run_one
 
 #: The protocol behind every published MATCH number.
 PUBLISHED_CFG = dict(heads=4, epochs=40, train_n=30000, test_n=2000,

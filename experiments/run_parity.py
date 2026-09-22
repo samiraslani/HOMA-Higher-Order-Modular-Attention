@@ -59,8 +59,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from experiments.common import (banner, base_parser, fmt_cell, int_list,
                                 mean_sd, pick_device, ResultStore, run_jobs)
-from homa.tasks.diagnostic import PAPER_NAME, epochs_to
-from homa.tasks.diagnostic.parity_majority import run_one
+from tasks.diagnostic import PAPER_NAME, epochs_to
+from tasks.diagnostic.parity_majority import run_one
 
 #: The protocol behind every published parity number.
 PUBLISHED_CFG = dict(seq_len=16, reach=3, heads=4, rank=8, stride=8,
@@ -90,8 +90,8 @@ PRESETS = {
     # without the residual path the depth grid uses; its parameter counts
     # match only that (e.g. HOMA at d=64: 25,362 here, 25,490 in Table 1).
     # plain2d runs alongside blockwise2d because at one block the two are the
-    # same operator, and reproduce/make_tables.py asserts they agree run for
-    # run -- a cheap check that the single-block claim holds in the code.
+    # same operator; they should agree run for run, a cheap check that the
+    # single-block claim holds in the code.
     "capacity": dict(orders=[3], depths=[1], widths=[8, 16, 32, 64, 128],
                      families=["parity"],
                      arms=["plain2d", "blockwise2d", "blockwise3d", "homa"],
@@ -303,9 +303,8 @@ def main() -> None:
                           d_model=j["d_model"], seed=j["seed"],
                           n_layers=j["depth"], cfg=cfg, device=device,
                           residual=residual)
-            # Field names follow the published records, including the two
-            # spellings of the arm ("mech", "mechanism") that different
-            # tables read, so reproduce/make_tables.py works on either.
+            # Field names follow the published records, including both
+            # spellings of the arm ("mech", "mechanism") they use.
             rec.update(axis="order", depth=j["depth"], family=j["family"],
                        k=j["k"], mech=j["mech"], mechanism=j["mech"],
                        d_model=j["d_model"], seed=j["seed"])

@@ -35,8 +35,8 @@ component of HOMA, with the fusion MLP (``homa_*``) or without it
 
 from __future__ import annotations
 
-from ...models.attention import attention_2d as a2
-from ...models.attention import attention_3d as a3
+from models.attention import attention_2d as a2
+from models.attention import attention_3d as a3
 
 __all__ = ["build_attention", "MECHANISMS", "PAPER_NAME", "is_known"]
 

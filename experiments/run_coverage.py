@@ -48,8 +48,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from experiments.common import (banner, base_parser, fmt_cell, int_list,
                                 mean_sd, pick_device, ResultStore, run_jobs)
-from homa.tasks.diagnostic import PAPER_NAME
-from homa.tasks.diagnostic.parity_majority import centers_for, make_offsets, run_one
+from tasks.diagnostic import PAPER_NAME
+from tasks.diagnostic.parity_majority import centers_for, make_offsets, run_one
 
 PUBLISHED_CFG = dict(seq_len=24, reach=3, heads=4, rank=8, stride=8,
                      train_n=3000, test_n=800, epochs=40, batch_size=128,

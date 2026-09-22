@@ -16,75 +16,76 @@ results in a resumable JSON file.
 HOMA-Higher-Order-Modular-Attention-new
 ├── README.md
 ├── LICENSE
-├── pyproject.toml                        # package metadata; extras: tape, figures, test, all
 ├── requirements.txt
-├── Makefile                              # one target per experiment, plus test / quick / tables
-├── homa/                                 # the library
-│   ├── config.py                         # ModelConfig, AttentionConfig, TrainingConfig
-│   ├── models/
-│   │   ├── attention/
-│   │   │   ├── base.py                   # AttentionBase, shared sliding-block helpers
-│   │   │   ├── attention_2d.py           # Pairwise-2D, Blockwise-2D, Linformer
-│   │   │   ├── attention_3d.py           # HOMA (main contribution), Blockwise-3D
-│   │   │   └── __init__.py               # get_attention() factory
-│   │   ├── feedforward.py                # FeedForward
-│   │   ├── encoder.py                    # Encoder layer
-│   │   └── protein_transformer.py        # ProteinTransformer, PerResidueHead, GlobalRegressionHead
-│   ├── tasks/
-│   │   ├── diagnostic/                   # controlled tasks; numpy + torch only
-│   │   │   ├── mechanisms.py             # registry of every attention arm, by its paper name
-│   │   │   ├── parity_majority.py        # PARITY-k / MAJORITY-k data, TinyModel, run_one
-│   │   │   └── match.py                  # MATCH2 / MATCH3 data, Fourier embedding, run_one
-│   │   └── protein/                      # TAPE protein-sequence tasks
-│   │       ├── secondary_structure.py    # SecondaryStructureTask (Q3)
-│   │       ├── contact_prediction.py     # ContactPredictionTask, ProteinNet data, P@L/5
-│   │       └── fluorescence.py           # FluorescenceTask (Spearman rho)
-│   ├── data/
-│   │   ├── datasets.py                   # secondary-structure and fluorescence datasets
-│   │   ├── collate.py                    # collate_ss3, collate_regression
-│   │   └── tape_compat.py                # TAPETokenizer, LMDBDataset (replaces tape_proteins)
-│   ├── training/
-│   │   ├── trainer.py                    # Trainer (unified loop for the protein tasks)
-│   │   ├── trajectory.py                 # TrajectoryTrainer (per-epoch test curves)
-│   │   └── efficiency.py                 # EfficiencyTracker (timing + memory)
-│   ├── evaluation/
-│   │   └── metrics.py                    # accuracy_per_position, spearman_correlation
-│   └── utils/
-│       ├── seed.py                       # set_seed()
-│       └── checkpointing.py              # save_checkpoint, load_checkpoint
-├── experiments/                          # one runner per experiment
-│   ├── common.py                         # resumable result store, device selection, shared CLI
-│   ├── run_parity.py                     # PARITY / MAJORITY: Table 1, Figure 2
-│   ├── run_match.py                      # MATCH2 / MATCH3: Table 2
-│   ├── run_coverage.py                   # window coverage and depth: Figure 4
-│   └── run_tape.py                       # secondary structure, contact, fluorescence: Figure 3
-├── reproduce/
-│   ├── make_tables.py                    # LaTeX results tables, built from the result files
-│   └── tape_data.py                      # protein-result loader used by make_tables.py
-└── tests/                                # about 30 s on a laptop
+├── pyproject.toml                    # package metadata (optional install)
+├── config.py                         # ModelConfig, AttentionConfig, TrainingConfig
+├── models/
+│   ├── attention/
+│   │   ├── base.py                   # AttentionBase, shared sliding-block helpers
+│   │   ├── attention_2d.py           # Pairwise-2D, Blockwise-2D, Linformer
+│   │   ├── attention_3d.py           # HOMA (main contribution), Blockwise-3D
+│   │   └── __init__.py               # get_attention() factory
+│   ├── feedforward.py                # FeedForward
+│   ├── encoder.py                    # Encoder layer
+│   └── protein_transformer.py        # ProteinTransformer, PerResidueHead, GlobalRegressionHead
+├── tasks/
+│   ├── diagnostic/                   # controlled tasks; numpy + torch only
+│   │   ├── mechanisms.py             # registry of every attention arm, by its paper name
+│   │   ├── parity_majority.py        # PARITY-k / MAJORITY-k data, TinyModel, run_one
+│   │   └── match.py                  # MATCH2 / MATCH3 data, Fourier embedding, run_one
+│   └── protein/                      # TAPE protein-sequence tasks
+│       ├── secondary_structure.py    # SecondaryStructureTask (Q3)
+│       ├── contact_prediction.py     # ContactPredictionTask, ProteinNet data, P@L/5
+│       └── fluorescence.py           # FluorescenceTask (Spearman rho)
+├── data/
+│   ├── datasets.py                   # secondary-structure and fluorescence datasets
+│   ├── collate.py                    # collate_ss3, collate_regression
+│   └── tape_compat.py                # TAPETokenizer, LMDBDataset (replaces tape_proteins)
+├── training/
+│   ├── trainer.py                    # Trainer (unified loop for the protein tasks)
+│   ├── trajectory.py                 # TrajectoryTrainer (per-epoch test curves)
+│   └── efficiency.py                 # EfficiencyTracker (timing + memory)
+├── evaluation/
+│   └── metrics.py                    # accuracy_per_position, spearman_correlation
+├── utils/
+│   ├── seed.py                       # set_seed()
+│   └── checkpointing.py              # save_checkpoint, load_checkpoint
+├── experiments/                      # one runner per experiment
+│   ├── common.py                     # resumable result store, device selection, shared CLI
+│   ├── run_parity.py                 # PARITY / MAJORITY: Table 1, Figure 2
+│   ├── run_match.py                  # MATCH2 / MATCH3: Table 2
+│   ├── run_coverage.py               # window coverage and depth: Figure 4
+│   └── run_tape.py                   # secondary structure, contact, fluorescence: Figure 3
+└── tests/                            # about 15 s on a laptop
     ├── conftest.py
-    ├── test_mechanisms.py                # every arm builds; published parameter counts
-    ├── test_parity.py                    # offsets, labels, boundary masking, chance level
-    ├── test_match.py                     # labels vs brute force; published moduli
-    ├── test_contact.py                   # contact parameter counts, symmetry, precision
-    ├── test_tape_compat.py               # tokenizer matches TAPE
-    └── test_exact_reproduction.py        # retrains two published cells and checks them
+    ├── test_mechanisms.py            # every arm builds; published parameter counts
+    ├── test_parity.py                # offsets, labels, boundary masking, chance level
+    ├── test_match.py                 # labels vs brute force; published moduli
+    ├── test_contact.py               # contact parameter counts, symmetry, precision
+    └── test_tape_compat.py           # tokenizer matches TAPE
 ```
 
 ## Install
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[all]"          # torch, numpy, scipy, lmdb, matplotlib, pytest
-pytest                           # the test suite
+pip install -r requirements.txt  # torch, numpy, scipy, lmdb, tqdm
+pip install pytest               # only to run the tests
 ```
 
-The diagnostic tasks need only `torch` and `numpy` (`pip install -e .`).
-The protein tasks also need `scipy` and `lmdb` (`pip install -e ".[tape]"`).
+Run everything from the repository root. The runners in `experiments/` find the
+code folders next to them, so no installation of the code itself is needed.
+`pip install -e .` also works and makes the modules importable from anywhere,
+but it installs them under their folder names (`models`, `data`, `utils`, …),
+which can clash with other installed packages, so a separate virtual
+environment is recommended.
+
+The diagnostic tasks need only `torch` and `numpy`; the protein tasks also need
+`scipy` and `lmdb`.
 
 `tape_proteins` is **not** needed. It no longer imports under NumPy 2, so the two
 pieces of it this code used, the IUPAC tokenizer and the LMDB reader, are
-reproduced in `homa/data/tape_compat.py` with identical behaviour.
+reproduced in `data/tape_compat.py` with identical behaviour.
 
 Tested with Python 3.12 under torch 2.7.1 and torch 2.14 (NumPy 2.2 and 2.5).
 
@@ -94,18 +95,12 @@ The two folders do different jobs:
 
 * **`experiments/`** is how you **produce results**. Each script trains a grid
   of models and writes a results file. A run takes minutes to GPU-days.
-* **`tests/`** is how you **check the code is correct**. The suite runs in about
-  30 seconds, makes assertions rather than writing results, and should pass
-  after any change to the code.
-
-Most tests are structural. `test_mechanisms.py`, for example, checks that every
-arm builds with exactly the published parameter count; a parameter count is a
-fingerprint of an architecture, so a changed width, head or residual path fails
-it. `test_exact_reproduction.py` is the one that trains: it retrains two
-published cells from scratch (about 10 s each on a CPU) and checks their
-accuracy lands within 0.005 of the published value. It catches silent changes
-to data generation, seeding, initialisation order or the forward pass, which
-would move the numbers while every structural test still passed.
+* **`tests/`** is how you **check the code is correct**, and is not needed to run
+  anything. The suite runs in about 15 seconds (`pytest`), makes assertions
+  rather than writing results, and should pass after any change to the code.
+  For example, `test_mechanisms.py` checks that every arm builds with exactly
+  the published parameter count; a parameter count is a fingerprint of an
+  architecture, so a changed width, head or residual path fails it.
 
 ## What produces what
 
@@ -134,19 +129,6 @@ Every runner:
 subset, for example `--tasks contact`. It writes `results/tape.json`
 (secondary structure and fluorescence) and `results/contact.json`.
 
-### Building the LaTeX tables
-
-```bash
-python reproduce/make_tables.py > tables.tex                  # from your runs in results/
-python reproduce/make_tables.py --published DIR > tables.tex  # from the original result files
-```
-
-Run on the original result files, it reproduces the published table bodies
-byte for byte. The memory and throughput columns are only meaningful for runs
-on CUDA, since peak memory is recorded only there. It also checks the claims the
-paper makes about the numbers (for example, that the MAJORITY control is solved
-everywhere), and reports on stderr any that a rerun does not support.
-
 ### How close a rerun gets
 
 Seeding makes a run repeatable on one machine with one torch version. It does
@@ -154,8 +136,8 @@ not make runs identical across machines. On these tasks a model often sits
 right at the edge of solving the problem, so small numerical differences can
 grow:
 
-* **CPU, torch 2.7.1**: the two cells in `test_exact_reproduction.py` reproduce
-  the published records exactly, to every printed digit.
+* **CPU, torch 2.7.1**: re-running published Table 3 and window-coverage cells
+  reproduces their recorded accuracy exactly, to every printed digit.
 * **CPU, torch 2.14**: the same cells agree to within a few of 8,000 test labels.
 * **Apple MPS**: re-running Table 1 at d=64, depth 1, 9 of 12 PARITY cells land
   within 0.02 of the published mean. The other 3 move by up to 0.07: at

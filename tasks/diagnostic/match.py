@@ -9,7 +9,7 @@ single unit of third-order attention computes it.
 
 Needs only numpy and torch, so it stays runnable in a bare Colab VM.
 
-    from homa.tasks.diagnostic.match import run_one, PUBLISHED_M
+    from tasks.diagnostic.match import run_one, PUBLISHED_M
     rec = run_one("homa", order=3, N=6, M=PUBLISHED_M[(3, 6)], d_model=32,
                   heads=4, seed=0, device="cuda")
 """
@@ -230,7 +230,7 @@ def build_model(mech, *, d_model, heads, N, vocab, rank=8, n_layers=1,
     is about interaction order rather than reach.  ``block_size = stride = N``
     gives a single full-sequence block for the same reason.
 
-    Arms come from :mod:`homa.tasks.diagnostic.mechanisms`.  That matters here: the
+    Arms come from :mod:`tasks.diagnostic.mechanisms`.  That matters here: the
     published HOMA-add column of Table 2 was produced by patching this function
     at run time from the sweep notebook, so ``homa_add`` was reachable in the
     run but not in the committed source.  It is a first-class arm now.

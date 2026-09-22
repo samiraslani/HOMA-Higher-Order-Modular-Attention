@@ -3,7 +3,7 @@ import itertools
 import numpy as np
 import pytest
 
-from homa.tasks.diagnostic.match import (PUBLISHED_M, calibrate_M, full_window,
+from tasks.diagnostic.match import (PUBLISHED_M, calibrate_M, full_window,
                                         match_labels)
 
 

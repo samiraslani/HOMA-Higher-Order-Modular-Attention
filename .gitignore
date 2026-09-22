@@ -13,7 +13,8 @@ venv/
 results/
 *.json.tmp
 
-# Data is never committed; see README for where to get it.
-data/
+# Datasets and checkpoints are never committed; see README for where to get
+# them.  (data/ is a code folder, so it is not ignored as a whole.)
 *.lmdb
+*.mdb
 *.pt

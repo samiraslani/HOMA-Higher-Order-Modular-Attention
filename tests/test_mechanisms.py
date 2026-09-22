@@ -9,7 +9,7 @@ paper, so a failure here means the code no longer builds the published model.
 import pytest
 import torch
 
-from homa.tasks.diagnostic import MECHANISMS, build_model, match_build_model, n_params
+from tasks.diagnostic import MECHANISMS, build_model, match_build_model, n_params
 
 
 @pytest.mark.parametrize("mech", MECHANISMS + ("homa_w3",))

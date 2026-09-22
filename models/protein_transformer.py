@@ -31,7 +31,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, Union
 
-from ..config import AttentionConfig, ModelConfig
+from config import AttentionConfig, ModelConfig
 from .encoder import Encoder, _SLIDING_ATTENTION_TYPES
 
 # ---------------------------------------------------------------------------

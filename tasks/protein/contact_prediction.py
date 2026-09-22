@@ -38,8 +38,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
-from ...config import AttentionConfig, ModelConfig, TrainingConfig
-from ...models.protein_transformer import ProteinTransformer
+from config import AttentionConfig, ModelConfig, TrainingConfig
+from models.protein_transformer import ProteinTransformer
 
 
 # ===========================================================================

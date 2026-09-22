@@ -65,17 +65,17 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 
 from experiments.common import DEFAULT_RESULTS_DIR, git_commit, int_list, mean_sd, pick_device
-from homa.config import AttentionConfig, ModelConfig, TrainingConfig
-from homa.data.tape_compat import LMDBDataset, TAPETokenizer
-from homa.evaluation.metrics import accuracy_per_position, spearman_correlation
-from homa.tasks.protein.contact_prediction import (ContactDataset, build_contact_model,
+from config import AttentionConfig, ModelConfig, TrainingConfig
+from data.tape_compat import LMDBDataset, TAPETokenizer
+from evaluation.metrics import accuracy_per_position, spearman_correlation
+from tasks.protein.contact_prediction import (ContactDataset, build_contact_model,
                                                    collate_contacts, evaluate,
                                                    find_proteinnet, pair_memory_gb,
                                                    silence_padding_log)
-from homa.tasks.protein.fluorescence import FluorescenceTask
-from homa.tasks.protein.secondary_structure import SecondaryStructureTask
-from homa.training.trajectory import TrajectoryTrainer, test_at_best_val
-from homa.utils.seed import set_seed
+from tasks.protein.fluorescence import FluorescenceTask
+from tasks.protein.secondary_structure import SecondaryStructureTask
+from training.trajectory import TrajectoryTrainer, test_at_best_val
+from utils.seed import set_seed
 
 TASKS = ["secondary_structure", "contact", "fluorescence"]
 ARMS = ["plain2d", "blockwise2d", "blockwise3d", "homa"]

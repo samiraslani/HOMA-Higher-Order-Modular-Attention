@@ -35,7 +35,7 @@ def pick_device(requested: str | None = None) -> str:
     but note that the published numbers were produced on CUDA.  Floating-point
     reduction order differs between backends, so a single run can land a few
     thousandths away from the published cell; the seed mean over three seeds is
-    what should be compared.  See ``reproduce/verify.py``.
+    what should be compared.
     """
     import torch
 
