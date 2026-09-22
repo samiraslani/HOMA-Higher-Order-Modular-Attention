@@ -108,8 +108,8 @@ Requirements:
 - PyTorch >= 2.1
 
 ```bash
-git clone https://github.com/samiraslani/HOMA-Higher-Order-Modular-Attention-new.git
-cd HOMA-Higher-Order-Modular-Attention-new
+git clone https://github.com/samiraslani/HOMA-Higher-Order-Modular-Attention.git
+cd HOMA-Higher-Order-Modular-Attention
 pip install -r requirements.txt     # torch, numpy, scipy, lmdb, tqdm
 ```
 
@@ -123,7 +123,7 @@ The diagnostic tasks need only `torch` and `numpy`; the protein tasks also need 
 
 ## Dataset setup
 
-The **diagnostic tasks generate their data on the fly** from a seed; nothing needs to be downloaded.
+The **diagnostic tasks generate their data** from a seed; nothing needs to be downloaded.
 
 The **protein tasks** use the TAPE LMDB files, which this repository does not include. Download them following the [TAPE instructions](https://github.com/songlab-cal/tape#datasets) and place them under one folder:
 
@@ -169,7 +169,6 @@ Five attention types are available via `get_attention(type, ...)` or `AttentionC
 |---|---|---|
 | `"plain2d"` | `MultiHeadAttn2D` | Standard scaled dot-product attention (Vaswani et al., 2017) |
 | `"blockwise2d"` | `Attn2DBlockwise` | Pairwise attention over overlapping blocks |
-| `"linformer2d"` | `Attn2DLinformer` | Linformer attention — sequence length projected to low-rank dimension $k$ |
 | `"blockwise3d"` | `MultiHeadAttn3D` | Windowed triadic block attention only, no 2D branch |
 | `"homa"` | `HOMA` | **Main contribution** — fusion of blockwise pairwise and windowed triadic block attention |
 
@@ -181,7 +180,6 @@ Five attention types are available via `get_attention(type, ...)` or `AttentionC
 |---|---|---|
 | `plain2d` — Standard 2D | $O(L^2 d_h)$ | $O(L^2)$ |
 | `blockwise2d` — Blockwise 2D | $O(T\,\ell^2 d_h)$ | $O(T\,\ell^2)$ |
-| `linformer2d` — Linformer 2D | $O(L\,k\,d_h)$ | $O(L\,k)$ |
 | `blockwise3d` — Blockwise triadic | $O(T\,\ell\,w^2 d_h)$ | $O(T\,\ell\,w^2)$ |
 | `homa` — Pairwise + triadic fusion | $O\left(T\,\ell^2 d_h + T\,\ell\,w^2 d_h\right)$ | $O\left(T\,\ell^2 + T\,\ell\,w^2 d_h\right)$ |
 
@@ -197,7 +195,7 @@ $T$ = number of overlapping blocks, $\ell$ = block size (default 30), $w$ = wind
 
 ## Diagnostic tasks
 
-The diagnostic tasks measure **which interaction order an attention mechanism can represent**, independently of any protein dataset. They live in `tasks/diagnostic/` and need only `numpy` and `torch`.
+The diagnostic tasks live in `tasks/diagnostic/` and need only `numpy` and `torch`.
 
 All diagnostic models share one deliberately minimal backbone (`TinyModel`): an embedding, the attention layers, and a linear read-out, with **no feed-forward sublayer**. An FFN can compute parity by itself and would hide what the attention contributes; without it, the attention is the only place where positions interact. The attention arms are defined once in `tasks/diagnostic/mechanisms.py` and selected by name:
 
@@ -216,11 +214,6 @@ Random bit sequences of length $L=16$. Each interior position $i$ is labelled fr
 
 * **PARITY-$k$**: $y_i = b_{i+o_1} \oplus \dots \oplus b_{i+o_k}$ — an irreducible order-$k$ interaction: every strict subset of the $k$ bits is independent of the label.
 * **MAJORITY-$k$**: $y_i = \mathbb{1}\left[\sum_j b_{i+o_j} > k/2\right]$ — a threshold on a sum of the same bits, which a pairwise mechanism separates at every $k$. It is the control: an effect that appears on MAJORITY as well as PARITY is not about interaction order.
-
-Two controls keep the comparison about order alone:
-
-* **Fixed reach.** The $k$ offsets are spread evenly over $[-3,+3]$, so the reach and span are the same for every $k$, and one centred triadic window of size 7 covers every $k$. Only $k$ varies.
-* **Masked boundaries.** Positions whose offset pattern would run off the sequence are labelled `-100` and excluded from both the loss and the accuracy.
 
 Depth is stacked pre-norm with residual connections, at every depth including depth 1, so that depth is the only thing that changes along the depth axis.
 
@@ -249,18 +242,13 @@ Integer sequences $x \in \mathbb{Z}_M^N$ (the task family of Sanford et al., 202
 * **MATCH2**: $y_i = \mathbb{1}\left[\exists j:\ x_i + x_j \equiv 0 \pmod M\right]$ — realisable by a single self-attention unit.
 * **MATCH3**: $y_i = \mathbb{1}\left[\exists j, k:\ x_i + x_j + x_k \equiv 0 \pmod M\right]$ — the smallest case of Sanford et al.'s separation between pairwise and third-order attention.
 
-Two things are held fixed so that accuracies are comparable:
 
-* **The modulus $M$ is calibrated** per $(N, \text{order})$ so that the two classes are balanced (majority-class baseline near 0.50). Without it the label density grows with $N$ and a constant predictor scores well. The calibrated values are pinned in `PUBLISHED_M` — MATCH2: $M=9$ at $N=6$, $14$ at $N=8$; MATCH3: $M=30$ at $N=6$, $56$ at $N=8$ — and the runner checks the calibration still reproduces them before it trains anything.
-* **The embedding is a frozen Fourier basis** of $\mathbb{Z}_M$ with a learnable projection on top. A learned lookup table would have to discover modular arithmetic first, which is slow and not what is being measured. With Fourier features a trilinear form can express $\cos(\omega(x_i+x_j+x_k))$ exactly, while a bilinear form has no such expansion.
-
-The triadic window is $2N-1$, so every query sees the whole sequence, and the sequence is a single block.
 
 ```bash
-python experiments/run_match.py                      # MATCH3, N = 6, 8, widths 8-256, 3 seeds
-python experiments/run_match.py --orders 2           # MATCH2
+python experiments/run_match.py                      
+python experiments/run_match.py --orders 2           
 python experiments/run_match.py --lengths 8 --widths 64
-python experiments/run_match.py --quick              # ~3 min pipeline check
+python experiments/run_match.py --quick              
 ```
 
 ```python
@@ -277,7 +265,7 @@ print(rec["final"], rec["majority"])   # final test accuracy, majority-class bas
 `run_coverage.py` asks what happens when the interaction reaches past the triadic window. A window of size $w$ centred on the query sees offsets up to $\pm(w-1)/2$; stacking $L$ layers composes windows. On PARITY-3 with offsets $(-R, 0, +R)$, it varies the interaction reach $R$ against the window ($w = 3, 7$, one layer) and against depth ($w=3$, depth 1, 2, 4). The labelled positions are fixed to those valid at the largest reach, so widening $R$ does not also reduce the number of labels.
 
 ```bash
-python experiments/run_coverage.py                   # both phases
+python experiments/run_coverage.py                  
 python experiments/run_coverage.py --phases cliff
 ```
 
@@ -333,20 +321,6 @@ model, history = task.train(
 
 Set `max_seq_length` when training through `task.train()`: with the default `None`, batches are padded to different lengths and the trainer cannot concatenate the per-batch predictions to compute the epoch metric.
 
-### Contact prediction
-
-```python
-from config import ModelConfig, AttentionConfig, TrainingConfig
-from tasks.protein.contact_prediction import ContactPredictionTask, ContactDataset, evaluate
-
-model_cfg = ModelConfig(d_model=128, num_layers=12, num_heads=8, dim_feedforward=256, dropout=0.1)
-attn_cfg  = AttentionConfig(type="homa", block_size=32, stride=16, window_size=5, rank_3d=8)
-task = ContactPredictionTask(model_cfg, attn_cfg, TrainingConfig(batch_size=8))
-
-model  = task.build_model()
-loader = task.make_loader(ContactDataset("DATA_ROOT/proteinnet/proteinnet_valid.lmdb"), shuffle=False)
-print(evaluate(model, loader, device="cpu")["P@L/5_long"])
-```
 
 ### Transfer learning from a 2D baseline
 
@@ -394,30 +368,6 @@ See `config.py` for full defaults and parameter documentation.
 
 The diagnostic tasks take a small dictionary instead (`DEFAULT_CFG` in `tasks/diagnostic/parity_majority.py`; keyword arguments of `run_one` in `tasks/diagnostic/match.py`).
 
-The default settings of the experiment runners:
-
-| | PARITY / MAJORITY | MATCH | Sec. Structure | Contact | Fluorescence |
-|---|---|---|---|---|---|
-| train / test | 3,000 / 800 | 30,000 / 2,000 | TAPE splits | ProteinNet | TAPE splits |
-| length | 16 | N = 6, 8 | 512 | crop 256 | 237 |
-| width | 32, 64 | 8–256 | 32–512 | 32–256 | 32–256 |
-| layers | 1, 6, 12 | 1 | 12 | 12 | 12 |
-| heads | 4 | 4 | 8 | 8 | 8 |
-| FFN | none | none | 2d | 2d | 2d |
-| dropout | 0 | 0 | 0.4 | 0.1 | 0.1 |
-| block / stride | one block | one block | 30 / 15 | 32 / 16 | 30 / 15 |
-| triadic window | 7 | 2N−1 | 5 | 5 | 5 |
-| U rank | 8 | 8 | 8 | 8 | 8 |
-| optimizer | Adam 2e-3 | Adam 3e-3 | Adam 1e-4 | AdamW 1e-4, wd 0.01 | Adam 1e-4 |
-| schedule, clipping | none | none | none | OneCycle 10 %, clip 1.0 | none |
-| batch, epochs | 128, 40 | 256, 40 | 16, 10 | 8, 8 | 16, 10 |
-| seeds | 0, 1, 2 | 0, 1, 2 | 42, 456, 608 | 0, 1, 2 | 42, 456, 608 |
-
-Details that are easy to get wrong:
-
-* **Residual connections in the diagnostic models.** The depth grid uses residual connections at every depth, including depth 1. The single-layer ablations (`--preset capacity`) use one attention layer with no residual path, so their one-layer models differ from the depth grid's.
-* **Fluorescence length is 237**, the longest GFP sequence. The regression head reads `max_len × d_model` features, so this setting changes the model, not just the padding.
-
 ---
 
 ## Running the experiments
@@ -429,16 +379,6 @@ Details that are easy to get wrong:
 | MATCH2 | `python experiments/run_match.py --orders 2` |
 | Triadic window coverage and depth | `python experiments/run_coverage.py` |
 | Secondary structure, contact prediction, fluorescence | `python experiments/run_tape.py --data-root DATA_ROOT` |
-
-Every runner:
-
-* writes its results file (under `results/`) after **each** run, and on restart skips what it has already done, so an interrupted session loses at most one run;
-* refuses to append to a results file written under a different protocol;
-* takes `--quick` for a short end-to-end check at a small budget, and `--tables-only` to print a summary of an existing results file;
-* takes `--seeds`, `--device`, and axis flags (`--widths`, `--orders`, `--tasks`, …) to run part of a grid.
-
-The device defaults to CUDA, then Apple MPS, then CPU. Seeding makes a run repeatable on one machine with one torch version, not across machines: floating-point reduction order differs between backends, so compare seed means rather than single runs.
-
 ---
 
 ## Training output
@@ -504,12 +444,6 @@ The diagnostic runners print one line per run instead, with the final accuracy a
 
 For the protein tasks the reported test score comes from the best-validation epoch, chosen by a task-specific criterion:
 
-| Task | Criterion | Rationale |
-|---|---|---|
-| Secondary structure | Lowest **validation loss** | Per-residue cross-entropy loss correlates directly with per-residue accuracy; selecting by loss avoids overfitting to spurious accuracy gains. |
-| Fluorescence | Highest **validation Spearman ρ** | The evaluation metric is rank correlation, so the model with the best held-out ρ generalises best. |
-| Contact prediction | **Last epoch** | One test pass is made after the final epoch; the best validation epoch is recorded for inspection only. |
-
 `Trainer` (used by `task.train()`) writes two checkpoint files per run:
 
 | File | Contents |
@@ -530,36 +464,6 @@ trainer = Trainer(config=train_cfg, attn_name="homa", select_by="val_metric") # 
 `run_tape.py` uses `TrajectoryTrainer`, which additionally evaluates every test split at every epoch (never using it for selection) and reads the test score at the best-validation epoch.
 
 The diagnostic tasks report the accuracy after the last epoch.
-
----
-
-## Multi-seed experiments
-
-Every runner trains each configuration over three seeds by default and prints the mean and standard deviation across seeds. The seeds differ by task family: 0, 1, 2 for the diagnostic tasks and contact prediction, and 42, 456, 608 for secondary structure and fluorescence. Pass `--seeds` to change them:
-
-```bash
-python experiments/run_tape.py --data-root DATA_ROOT --tasks secondary_structure \
-    --arms plain2d,blockwise2d,blockwise3d,homa --seeds 42,456,608
-```
-
-| Task | Test splits |
-|---|---|
-| Secondary structure | `cb513`, `casp12`, `ts115` (three held-out TAPE benchmarks) |
-| Contact prediction | ProteinNet `test` (CASP12) |
-| Fluorescence | `test` |
-
-After the runs, a summary is printed for every task, test split, mechanism and width:
-
-```
-==============================================================================
-  secondary_structure / cb513: test Q3 at the best-validation epoch, mean +/- sd
-==============================================================================
-  mechanism                     d=32               d=64
-  Pairwise-2D       0.513+/-0.001(3)   0.518+/-0.001(3)
-  HOMA              0.625+/-0.003(3)   0.642+/-0.001(3)
-```
-
-The same summary can be printed again at any time from the results file with `--tables-only`.
 
 ---
 
@@ -613,7 +517,7 @@ If you use this code, please cite our paper:
 ```bibtex
 @article{amiraslani2026homa,
   title   = {HOMA: Higher-Order Modular Attention for Protein Sequence Modelling},
-  author  = {Amiraslani, Shirin and others},
+  author  = {Amiraslani, Shirin and Gao, Xin},
   journal = {arXiv preprint arXiv:2603.11133},
   year    = {2026},
   url     = {https://arxiv.org/abs/2603.11133},
