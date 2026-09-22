@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """PARITY-k and MAJORITY-k across interaction order, depth and width.
 
-Produces Table 1 of the paper, the lower orders and the MAJORITY control that
-accompany it, and the convergence curves behind Figure 2.  Three presets:
+Accuracy and per-epoch convergence curves for every order, depth and width, for
+PARITY and the MAJORITY control.  Three presets:
 
     --preset grid       order x depth x width, residual at every depth
-                        (the default; Table 1)
+                        (the default)
     --preset capacity   PARITY-3 at depth 1 across widths 8-128, a single
                         attention layer with NO residual path
     --preset long       Pairwise-2D on PARITY-5 at d=64, depths 1, 6, 12,
@@ -67,7 +67,7 @@ PUBLISHED_CFG = dict(seq_len=16, reach=3, heads=4, rank=8, stride=8,
                      train_n=3000, test_n=800, epochs=40, batch_size=128,
                      lr=2e-3)
 
-#: Table 1 reports k=3-5; k=1,2 are the lower-order check.
+#: k=3-5 are the higher orders; k=1,2 are the lower-order check.
 PUBLISHED_ORDERS = [1, 2, 3, 4, 5]
 PUBLISHED_DEPTHS = [1, 6, 12]
 PUBLISHED_WIDTHS = [32, 64]
@@ -88,7 +88,7 @@ PRESETS = {
                  arms=PUBLISHED_ARMS, residual=True, epochs=40),
     # The width axis was run as one attention layer applied directly,
     # without the residual path the depth grid uses; its parameter counts
-    # match only that (e.g. HOMA at d=64: 25,362 here, 25,490 in Table 1).
+    # match only that (e.g. HOMA at d=64: 25,362 here, 25,490 with the residual).
     # plain2d runs alongside blockwise2d because at one block the two are the
     # same operator; they should agree run for run, a cheap check that the
     # single-block claim holds in the code.
@@ -175,7 +175,7 @@ def epochs_cell(runs, *, depth, family, k, mech, d_model, seeds, thresh=0.90,
 
 
 def print_grid(runs, args):
-    """Table 1: accuracy by order, depth and width, one block per width."""
+    """Accuracy by order, depth and width, one block per width."""
     for fam in args.family_list:
         print(f"\n{'=' * 74}\n  {fam.upper()}-k: mean final test accuracy "
               f"+/- sd over {len(args.seed_list)} seeds\n{'=' * 74}")

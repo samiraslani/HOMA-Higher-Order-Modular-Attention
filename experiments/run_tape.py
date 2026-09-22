@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """TAPE protein tasks: secondary structure, contact prediction, fluorescence.
 
-One runner for the three protein-sequence tasks of the paper (Figure 3 and its
-results tables): every attention mechanism at every width, over three seeds.
+One runner for the three protein-sequence tasks: every attention mechanism at
+every width, over three seeds.
 
     python experiments/run_tape.py --data-root /path/to/tape
     python experiments/run_tape.py --data-root ... --tasks contact --widths 64

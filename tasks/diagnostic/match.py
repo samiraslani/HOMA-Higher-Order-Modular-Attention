@@ -230,7 +230,7 @@ def build_model(mech, *, d_model, heads, N, vocab, rank=8, n_layers=1,
     gives a single full-sequence block for the same reason.
 
     Arms come from :mod:`tasks.diagnostic.mechanisms`.  That matters here: the
-    published HOMA-add column of Table 2 was produced by patching this function
+    published HOMA-add results were produced by patching this function
     at run time from the sweep notebook, so ``homa_add`` was reachable in the
     run but not in the committed source.  It is a first-class arm now.
     """

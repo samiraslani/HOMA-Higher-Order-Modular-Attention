@@ -24,7 +24,7 @@ sequence lengths.  At that setting Blockwise-2D and Pairwise-2D are the same
 operator, which is why the paper's PARITY table labels the row Pairwise-2D
 while the result files key it ``blockwise2d``.
 
-Ablation arms (the component teardown, Table 3 of the paper), each changing one
+Ablation arms (the component teardown), each changing one
 component of HOMA, with the fusion MLP (``homa_*``) or without it
 (``homa_add_*``):
 

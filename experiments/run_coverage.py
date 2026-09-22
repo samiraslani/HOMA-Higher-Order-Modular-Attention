@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Triadic window coverage on PARITY-3: the window's reach against the task's.
 
-Produces Figure 4 of the paper: the window cliff and the depth ablation.
+Two phases: the window cliff and the depth ablation.
 
 Two reaches, which must not be confused
 ---------------------------------------

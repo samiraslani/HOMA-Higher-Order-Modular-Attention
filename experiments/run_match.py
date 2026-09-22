@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """MATCH2 and MATCH3: does some pair / triple sum to zero modulo M?
 
-Produces Table 2 of the paper (MATCH3 at N = 6, 8 across widths), the widths
-d = 8 and 256 on either side of it, and the MATCH2 control (``--orders 2``).
+MATCH3 at N = 6 and 8 across widths d = 8-256 (the default), and the MATCH2
+control (``--orders 2``).
 
 The task
 --------
@@ -38,7 +38,7 @@ frozen is the modular structure, not the model's choice of frequencies.
 
 Usage
 -----
-    python experiments/run_match.py                   # Table 2 (MATCH3)
+    python experiments/run_match.py                   # MATCH3
     python experiments/run_match.py --orders 2        # the MATCH2 control
     python experiments/run_match.py --quick           # ~3 min, pipeline check
     python experiments/run_match.py --lengths 8 --widths 64 --tables-only
@@ -61,7 +61,6 @@ from tasks.diagnostic.match import calibrate_M, full_window, run_one
 PUBLISHED_CFG = dict(heads=4, epochs=40, train_n=30000, test_n=2000,
                      lr=3e-3, rank=8)
 
-#: Table 2 shows widths 16-128; 8 and 256 bracket it.
 PUBLISHED_WIDTHS = [8, 16, 32, 64, 128, 256]
 TABLE2_WIDTHS = [16, 32, 64, 128]
 PUBLISHED_ARMS = ["pairwise2d", "blockwise3d", "homa_add", "homa"]
@@ -155,7 +154,7 @@ def print_accuracy(runs, args, moduli):
 
 
 def print_threshold(runs, args, thresh=0.90):
-    """The w_0.90 and params columns of Table 2."""
+    """Smallest width reaching the threshold, and its parameter multiple."""
     print(f"\n{'=' * 78}\n  Smallest width reaching {thresh:.2f} on the seed "
           f"mean, and its parameter count\n  relative to Pairwise-2D at the "
           f"same width\n{'=' * 78}")

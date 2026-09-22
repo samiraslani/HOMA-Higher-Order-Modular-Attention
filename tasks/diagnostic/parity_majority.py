@@ -206,7 +206,7 @@ def build_model(mech: str, d_model: int, heads: int, L: int, window: int,
     ``residual`` should be left True whenever depth is being varied: TinyModel
     only stacks pre-norm with residual connections when depth > 1, so a depth-1
     point built without them would differ in architecture as well as depth.
-    The published depth grid (Table 1) was run with ``residual=True`` at every
+    The published depth grid was run with ``residual=True`` at every
     depth including depth 1, which is why that is the default here.
 
     The arms themselves come from :mod:`tasks.diagnostic.mechanisms`, which is
