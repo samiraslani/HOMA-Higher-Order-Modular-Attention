@@ -320,6 +320,13 @@ class ProteinTransformer(nn.Module):
                 mask.stride(1),
             )
             block_mask = mask.as_strided(shape, strides_).contiguous()  # (B, Blk, L_b)
+            if getattr(self.attn_cfg, "blockwise2d_key_mask", False):
+                # Key-side mask: no query attends to a padded key.  A block
+                # that is entirely padding gets uniform weights (masked_fill
+                # uses -1e9, not -inf), so no NaNs are produced.
+                return block_mask.unsqueeze(2).unsqueeze(3)              # (B, Blk, 1, 1, L_b)
+            # Original mask, kept for comparison: masks padded query rows,
+            # so real queries can still attend to padded keys.
             return block_mask.unsqueeze(2).unsqueeze(4)                  # (B, Blk, 1, L_b, 1)
 
         if attn_type == "homa":
