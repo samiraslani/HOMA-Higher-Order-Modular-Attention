@@ -71,22 +71,12 @@ class AttentionConfig:
             can rescale or discard a branch, so ``"add"`` / ``"gated"``
             measure the triadic contribution without that confound.
         gate_init: Initial value of the ``gated`` scalar.
-        blockwise2d_key_mask: blockwise2d only.  ``False`` (default) keeps the
-            original mask, shaped ``(B, Blk, 1, L_b, 1)``, which masks padded
-            *query* rows, so real tokens can still attend to padded keys.
-            ``True`` uses the key-side mask ``(B, Blk, 1, 1, L_b)``, which
-            stops every query from attending to padded keys, as Pairwise-2D,
-            Blockwise-3D and HOMA do.  Kept as a flag so both can be compared.
     """
     type: str = "plain2d"
 
     # Sliding-window (blockwise2d / homa)
     block_size: int = 30
     stride: int = 15
-
-    # blockwise2d padding mask: False = original (query-side) mask,
-    # True = key-side mask (padded keys excluded from attention).
-    blockwise2d_key_mask: bool = False
 
     # Linformer
     linformer_k: int = 50
